@@ -1,0 +1,16 @@
+{
+  "name": "codex-coordination",
+  "interface": {
+    "displayName": "Codex Coordination"
+  },
+  "plugins": [
+    {
+      "name": "codex-coordination",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-coordination"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

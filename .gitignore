@@ -1,0 +1,16 @@
+# Local coordination ledgers, when the server is pointed at this repository.
+.codex-coordination/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Scratch
+.tmp/
+*.log

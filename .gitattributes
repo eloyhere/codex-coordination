@@ -1,0 +1,8 @@
+# Normalise line endings so a plugin installed on Windows and authored on any
+# platform keeps byte-identical manifests and MCP configuration.
+* text=auto eol=lf
+
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.svg text
+*.json text

@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "coordination": {
+      "command": "cmd.exe",
+      "args": [
+        "/d",
+        "/s",
+        "/c",
+        "call",
+        "./scripts/launch-mcp.cmd"
+      ],
+      "cwd": ".",
+      "startup_timeout_sec": 20,
+      "tool_timeout_sec": 120,
+      "env_vars": [
+        "PATH",
+        "PATHEXT",
+        "SystemRoot",
+        "SYSTEMROOT",
+        "LOCALAPPDATA",
+        "APPDATA",
+        "USERPROFILE",
+        "ProgramFiles",
+        "ProgramW6432",
+        "NODE_EXE",
+        "CODEX_COORDINATION_WORKSPACE",
+        "CODEX_COORDINATION_DEBUG"
+      ]
+    }
+  }
+}

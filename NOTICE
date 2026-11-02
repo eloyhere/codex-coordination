@@ -1,0 +1,20 @@
+codex-coordination
+Copyright 2026 Eloy Kim
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product implements a subset of the Attention Manifest Protocol (AMP v0.1)
+object model as popularised by the `attention-manifest-protocol` npm package
+(https://github.com/eloyhere/attention-manifest-protocol), Copyright 2026
+Eloy Kim, licensed under the Apache License, Version 2.0.
+
+The protocol vocabulary reused here is the Goal, Plan, Duty and ledger shape:
+`schema`-tagged objects with `amp: "0.1"` and `kind`, ids matching
+`^[a-z][a-z0-9._:-]{0,63}$`, an explicit lifecycle edge table, and a digest
+chain over canonical JSON. `mcp/lib/amp.mjs` declares those primitives;
+`mcp/lib/goals.mjs`, `plans.mjs`, `collaboration.mjs` and `check.mjs` implement
+the subset; `docs/PROTOCOL.md` records what was borrowed and what was reduced
+for a Codex-hosted, single-process server.
+
+The server has no third-party runtime dependencies: only Node.js built-in
+modules (`node:crypto`, `node:fs`, `node:path`, `node:readline`) are imported.

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Codex Coordination">
+  <defs>
+    <linearGradient id="cc-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0F766E"/>
+      <stop offset="1" stop-color="#0B4F4A"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#cc-bg)"/>
+  <g fill="none" stroke="#CCFBF1" stroke-width="2.6" stroke-linecap="round">
+    <path d="M20 40 L32 24 L44 40"/>
+    <path d="M20 40 L44 40"/>
+  </g>
+  <g fill="#CCFBF1">
+    <circle cx="32" cy="21" r="4.4"/>
+    <circle cx="18.5" cy="42" r="4.4"/>
+    <circle cx="45.5" cy="42" r="4.4"/>
+  </g>
+  <path d="M29.5 43.5 l2.2 2.4 4.6-5" fill="none" stroke="#0F766E" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

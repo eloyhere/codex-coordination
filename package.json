@@ -1,0 +1,50 @@
+{
+  "name": "codex-coordination",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Codex plugin that keeps a durable AMP coordination ledger beside a repository: goals, bounded plans, accountable handoffs and a hash-chained audit trail, exposed as five MCP tools and four skills.",
+  "keywords": [
+    "codex",
+    "codex-plugin",
+    "mcp",
+    "coordination",
+    "amp",
+    "attention-manifest-protocol",
+    "goals",
+    "plans",
+    "handoffs",
+    "ledger"
+  ],
+  "license": "Apache-2.0",
+  "author": "Eloy Kim <eloy.kim@outlook.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eloyhere/codex-coordination.git"
+  },
+  "bugs": {
+    "url": "https://github.com/eloyhere/codex-coordination/issues"
+  },
+  "homepage": "https://github.com/eloyhere/codex-coordination#readme",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "validate": "node scripts/validate.mjs",
+    "smoke": "node scripts/mcp-smoke.mjs",
+    "test": "node --test \"test/*.test.mjs\"",
+    "check": "npm run validate && npm test && npm run smoke",
+    "serve": "node plugins/codex-coordination/mcp/server.mjs"
+  },
+  "files": [
+    ".agents/plugins/marketplace.json",
+    "plugins/codex-coordination/**",
+    "scripts/**",
+    "test/**",
+    "README.md",
+    "README.zh-CN.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "NOTICE"
+  ]
+}
