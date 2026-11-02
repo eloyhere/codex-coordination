@@ -94,6 +94,14 @@ function parseFrontmatter(text) {
 const ID_PATTERN = /^[a-z][a-z0-9._:-]{0,63}$/
 const SEMVER = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/
 
+const packageJson = readJson(join(ROOT, 'package.json'), 'package.json')
+if (packageJson !== null) {
+  for (const [name, command] of Object.entries(packageJson.scripts ?? {})) {
+    const match = /^node\s+(scripts\/\S+)/.exec(command)
+    if (match !== null) check(existsSync(join(ROOT, match[1])), `package.json: script ${name} points at a missing file (${match[1]})`)
+  }
+}
+
 const marketplace = readJson(MARKETPLACE_PATH, 'marketplace.json')
 if (marketplace !== null) {
   check(typeof marketplace.name === 'string' && marketplace.name.length > 0, 'marketplace.json: name is required')
@@ -205,6 +213,13 @@ if (marketplace !== null) {
 
     const serverPath = join(pluginRoot, 'mcp', 'server.mjs')
     check(existsSync(serverPath), `${entry.name}: mcp/server.mjs is missing`)
+    if (packageJson !== null) {
+      check(manifest.version === packageJson.version, `${manifestLabel}: version must match package.json (${String(packageJson.version)})`)
+    }
+    if (existsSync(serverPath)) {
+      const advertised = /name:\s*'codex-coordination',\s*version:\s*'([^']+)'/.exec(readFileSync(serverPath, 'utf8'))
+      check(advertised !== null && advertised[1] === manifest.version, `${entry.name}: server.mjs serverInfo.version must match the manifest`)
+    }
   }
 }
 

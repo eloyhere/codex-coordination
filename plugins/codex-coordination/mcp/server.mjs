@@ -28,17 +28,18 @@ import { CoordinationError, ERROR_CODES, isRecord } from './lib/amp.mjs'
 import { TOOLS, toolNamed } from './lib/tools.mjs'
 
 /** Advertised server identity. */
-const SERVER_INFO = Object.freeze({ name: 'codex-coordination', version: '0.1.0' })
+const SERVER_INFO = Object.freeze({ name: 'codex-coordination', version: '0.2.0' })
 
 /** Protocol revisions this server speaks, newest first. */
 const SUPPORTED_PROTOCOLS = Object.freeze(['2025-06-18', '2025-03-26', '2024-11-05'])
 
 /** Model-facing note attached to every session that connects. */
 const INSTRUCTIONS = [
-  'This server keeps a durable, hash-chained coordination ledger for one repository at <workspace>/.codex-coordination/ledger.json.',
+  'This server keeps a durable coordination ledger for one repository at <workspace>/.codex-coordination/ledger.json.',
+  'The ledger is an AMP v0.1 append-only chain: every entry is {seq, kind, payload, prev, hash} with hash = sha256 over canonical JSON, and coordination_check action "snapshot" returns the strict ledger-snapshot artifact.',
   'Every call needs an absolute `workspace` path: the server does not guess it.',
   'Call coordination_status first, then create or advance goals, plans and handoffs. Use coordination_check before reporting that a task is finished.',
-  'The ledger records assertions. It does not run checks, authenticate identities or prove that evidence is true.',
+  'Goals and plans are strict AMP artifacts; a duty is a host projection recorded as events. The ledger records assertions. It does not run checks, authenticate identities or prove that evidence is true.',
 ].join(' ')
 
 /** Emit one diagnostic line on stderr when debugging is enabled. */

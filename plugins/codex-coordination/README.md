@@ -27,12 +27,15 @@ working directory is this plugin directory, so it never guesses.
 
 ## Ledger
 
-Each workspace it is pointed at gets one file:
-`<workspace>/.codex-coordination/ledger.json` — materialised goals, plans and
-duties, plus a SHA-256 chained journal of every change.
+Each workspace it is pointed at gets one host document:
+`<workspace>/.codex-coordination/ledger.json` — the materialised goals, plans and
+duties plus an append-only AMP chain (`{seq, kind, payload, prev, hash}`). The
+strict AMP artifact is derived: `coordination_check` with `action:"snapshot"`
+returns the `ledger-snapshot`, and `node scripts/amp-snapshot.mjs <workspace>`
+writes it to disk.
 
 ## Docs
 
-The project README covers installation, the five tools, the four skills and the
-honesty limits; `docs/PROTOCOL.md` covers the object model and the state
-machines.
+The project README covers installation, the five tools, the four skills, the AMP
+conformance table and the honesty limits; `docs/PROTOCOL.md` covers the object
+model, the chain construction, the state machines and the deliberate omissions.

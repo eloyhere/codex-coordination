@@ -36,6 +36,7 @@ The response lists duties plus `waitingOnPeople` — the queue of who owes what 
 }
 ```
 
+- A duty is a **host projection, not an AMP artifact kind**. The protocol models accountability with `responsibility-assignment` objects that need an authority list, a budget and a time window a Codex session cannot honestly supply, so the plugin records the duty truthfully and puts it in the chain as bounded `event` entries. Do not add `amp`/`kind` fields: they are rejected.
 - `role` is one of `decision`, `outcome`, `resource`, `personnel`, `qualification`, `execution`. It is metadata; it grants nothing.
 - `owner` and `assignee` are **declared identities** — use stable names (`codex-main`, `codex-sub-1:review`, a session id). They must differ.
 - `responsibilities` and `acceptance` are non-empty string arrays; write each item so a reviewer can tell whether it was met.
@@ -72,6 +73,8 @@ Lifecycle: `assigned → accepted → started → submitted → verified`, with 
 
 `actor` is checked against the recorded owner or assignee; a mismatch returns `PERMISSION`. Identity is declared, not authenticated — this is a coordination record, not an access-control boundary. Do not advance a duty on someone else's behalf.
 
+The chain records the terms at assignment (`duty.assigned`, including responsibilities and acceptance) and every move (`duty.transitioned`, including submitted summary/evidence and the owner review on verify/reject), so the trail does not depend on the projection staying untouched.
+
 ## Honesty rules
 
 - `submit` requires a summary and at least one evidence string. Evidence means artifact paths, commands and real outcomes, never "tests passed" alone.
@@ -80,4 +83,4 @@ Lifecycle: `assigned → accepted → started → submitted → verified`, with 
 
 ## 中文要点
 
-交接需要 owner 与 assignee 两个声明身份且不能相同；`responsibilities`/`acceptance` 要写成可判断是否达成的条目；受派人 `accept → start → submit`（必须带 summary 与真实 evidence），只有 owner 能 `verify`/`reject`/`cancel`，`actor` 不匹配会被拒；`verify` 只是记录复核，验收条件要自己实际跑；不要提交伪造证据。
+职责是**宿主投影**而不是 AMP 产物类型：不要传 `amp`/`kind`，它们会被拒绝；它在链上以 `duty.assigned` / `duty.transitioned` 事件记录。交接需要 owner 与 assignee 两个声明身份且不能相同；`responsibilities`/`acceptance` 要写成可判断是否达成的条目；受派人 `accept → start → submit`（必须带 summary 与真实 evidence），只有 owner 能 `verify`/`reject`/`cancel`，`actor` 不匹配会被拒；`verify` 只是记录复核，验收条件要自己实际跑；不要提交伪造证据。

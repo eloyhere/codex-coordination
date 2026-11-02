@@ -1,12 +1,21 @@
 /**
  * Duties and handoffs: who owes what, and how the result is accepted.
  *
- * A duty is one accountable unit of work with a declared owner, a declared
- * assignee, concrete responsibilities and observable acceptance criteria. Its
- * lifecycle is `assigned → accepted → started → submitted → verified`, with
- * `rejected` sending work back to `accepted` and `cancelled` closing it early.
+ * A duty is an **AMP host projection**, not an AMP artifact kind. The protocol
+ * models accountability with `responsibility-assignment` objects whose
+ * `window`, `authority` and `budget` a Codex session cannot honestly supply — it
+ * has no org directory, no lease and no wall-clock window of its own. Rather than
+ * emit a half-filled assignment, this module keeps a truthful host record and
+ * says so: duties enter the chain as `event` entries, never as an invented
+ * artifact kind.
  *
- * Two deliberate limitations are recorded here rather than hidden:
+ * The record itself is one accountable unit of work with a declared owner, a
+ * declared assignee, concrete responsibilities and observable acceptance
+ * criteria. Its lifecycle is `assigned → accepted → started → submitted →
+ * verified`, with `rejected` sending work back to `accepted` and `cancelled`
+ * closing it early.
+ *
+ * Two limitations are recorded here rather than hidden:
  *
  * 1. Identity is *declared*, not authenticated. `actor` is compared against the
  *    recorded owner or assignee, which stops a caller from casually advancing
@@ -19,12 +28,12 @@
  */
 
 import {
-  AMP_VERSION,
   ERROR_CODES,
   fail,
   isRecord,
   nowIso,
   requireEnum,
+  requireExactKeys,
   requireId,
   requireRecord,
   requireString,
@@ -92,7 +101,8 @@ function normaliseReference(state, reference, label) {
     }
     if (record.task === undefined) return { kind: 'plan', id: planId }
     const taskId = requireId(record.task, `${label}.task`)
-    if (!plan.tasks.some((task) => task.id === taskId)) {
+    const tasks = isRecord(plan.artifact) && Array.isArray(plan.artifact.tasks) ? plan.artifact.tasks : []
+    if (!tasks.some((task) => task.id === taskId)) {
       fail(ERROR_CODES.NOT_FOUND, `${label}.task ${taskId} does not exist in plan ${planId}`, { plan: planId, task: taskId })
     }
     return { kind: 'task', plan: planId, id: taskId }
@@ -102,18 +112,22 @@ function normaliseReference(state, reference, label) {
 
 /**
  * Validate the caller-supplied part of a duty.
+ *
+ * `amp` and `kind` are rejected on purpose: a duty is not an AMP object, and
+ * accepting the fields would suggest it is.
+ *
  * @param {Record<string, any>} state - the ledger.
  * @param {unknown} input - the raw `duty` argument.
  * @returns {Record<string, any>} the normalised, not-yet-stored duty.
  */
 export function normaliseDutyInput(state, input) {
   const record = requireRecord(input, 'duty')
-  if (record.amp !== undefined && record.amp !== AMP_VERSION) {
-    fail(ERROR_CODES.INVALID_ARGUMENT, `duty.amp must be "${AMP_VERSION}"`, { field: 'duty.amp' })
-  }
-  if (record.kind !== undefined && record.kind !== 'duty') {
-    fail(ERROR_CODES.INVALID_ARGUMENT, 'duty.kind must be "duty"', { field: 'duty.kind' })
-  }
+  requireExactKeys(
+    record,
+    ['id', 'role', 'owner', 'assignee', 'responsibilities', 'acceptance', 'goal', 'plan', 'task'],
+    ['id', 'role', 'owner', 'assignee', 'responsibilities', 'acceptance'],
+    'duty',
+  )
   const owner = requireString(record.owner, 'duty.owner', { max: 256 })
   const assignee = requireString(record.assignee, 'duty.assignee', { max: 256 })
   if (owner === assignee) {
@@ -121,12 +135,16 @@ export function normaliseDutyInput(state, input) {
       field: 'duty.assignee',
     })
   }
+  if (record.goal !== undefined && (record.plan !== undefined || record.task !== undefined)) {
+    fail(ERROR_CODES.INVALID_ARGUMENT, 'duty must name either goal or plan (+ task), not both', { field: 'duty.goal' })
+  }
+  if (record.task !== undefined && record.plan === undefined) {
+    fail(ERROR_CODES.INVALID_ARGUMENT, 'duty.task requires duty.plan', { field: 'duty.task' })
+  }
   const reference = record.goal !== undefined || record.plan !== undefined
     ? normaliseReference(state, record, 'duty')
     : undefined
   return {
-    amp: AMP_VERSION,
-    kind: 'duty',
     id: requireId(record.id, 'duty.id'),
     role: requireEnum(record.role, DUTY_ROLES, 'duty.role'),
     owner,
@@ -140,7 +158,7 @@ export function normaliseDutyInput(state, input) {
 
 /**
  * Create one duty in `assigned`.
- * @param {{ state: Record<string, any>, record: Function }} context - transaction context.
+ * @param {{ state: Record<string, any>, append: Function }} context - transaction context.
  * @param {unknown} input - the raw `duty` argument.
  * @returns {Record<string, any>} the stored duty.
  */
@@ -160,10 +178,15 @@ export function assignDuty(context, input) {
     history: [{ at, from: null, to: 'assigned', actor: duty.owner }],
   }
   context.state.duties[duty.id] = stored
-  context.record('duty/assigned', duty.id, {
+  context.append('event', {
+    type: 'duty.assigned',
+    duty: duty.id,
+    role: duty.role,
     owner: duty.owner,
     assignee: duty.assignee,
-    role: duty.role,
+    responsibilities: duty.responsibilities,
+    acceptance: duty.acceptance,
+    ...(duty.reference === undefined ? {} : { reference: duty.reference }),
   })
   return stored
 }
@@ -209,8 +232,8 @@ export function dutySummary(duty) {
     owner: duty.owner,
     assignee: duty.assignee,
     status: duty.status,
-    responsibilities: duty.responsibilities.length,
-    acceptance: duty.acceptance.length,
+    responsibilities: Array.isArray(duty.responsibilities) ? duty.responsibilities.length : 0,
+    acceptance: Array.isArray(duty.acceptance) ? duty.acceptance.length : 0,
     evidence: Array.isArray(duty.evidence) ? duty.evidence.length : 0,
     ...(duty.reference === undefined ? {} : { reference: duty.reference }),
     ...(allowed.length === 0 ? {} : { allowedTransitions: [...allowed] }),
@@ -220,14 +243,21 @@ export function dutySummary(duty) {
 /**
  * Move a duty along one legal edge, enforcing the handoff authority split.
  *
- * @param {{ state: Record<string, any>, record: Function }} context - transaction context.
+ * @param {{ state: Record<string, any>, append: Function }} context - transaction context.
  * @param {{ id: unknown, action: unknown, actor?: unknown, summary?: unknown, evidence?: unknown, review?: unknown, note?: unknown }} request - the tool arguments.
  * @returns {Record<string, any>} the updated duty.
  */
 export function transitionDuty(context, request) {
   const key = requireRecordId(context.state.duties, request.id, 'duty')
   const duty = context.state.duties[key]
-  const action = requireEnum(request.action, DUTY_ACTIONS.filter((value) => value !== 'list' && value !== 'get' && value !== 'assign'), 'action')
+  if (!Array.isArray(duty.history)) {
+    fail(ERROR_CODES.INVALID_STATE, `duty ${key} has no history array; run coordination_check`, { id: key })
+  }
+  const action = requireEnum(
+    request.action,
+    DUTY_ACTIONS.filter((value) => value !== 'list' && value !== 'get' && value !== 'assign'),
+    'action',
+  )
   if (TERMINAL_DUTY_STATUSES.includes(duty.status)) {
     fail(ERROR_CODES.INVALID_STATE, `duty ${key} is ${duty.status}; it is closed`, { id: key, status: duty.status })
   }
@@ -287,11 +317,15 @@ export function transitionDuty(context, request) {
     ...(actor === undefined ? {} : { actor }),
     ...(note === undefined ? {} : { note }),
   })
-  context.record('duty/transition', key, {
+  context.append('event', {
+    type: 'duty.transitioned',
+    duty: key,
     from,
     to: target,
     ...(actor === undefined ? {} : { actor }),
-    ...(action === 'submit' ? { evidence: duty.evidence.length } : {}),
+    ...(note === undefined ? {} : { note }),
+    ...(action === 'submit' ? { summary: duty.summary, evidence: duty.evidence } : {}),
+    ...(action === 'verify' || action === 'reject' ? { review: duty.review } : {}),
   })
   return duty
 }

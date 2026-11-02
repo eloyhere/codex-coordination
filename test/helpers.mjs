@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { CoordinationError } from '../plugins/codex-coordination/mcp/lib/amp.mjs'
+import { createGoal } from '../plugins/codex-coordination/mcp/lib/goals.mjs'
 import { readState, withLedger } from '../plugins/codex-coordination/mcp/lib/store.mjs'
 
 /**
@@ -31,7 +32,7 @@ export function makeWorkspace(t) {
 /**
  * Run one ledger transaction.
  * @param {string} workspace - the workspace root.
- * @param {(context: { state: Record<string, any>, record: Function }) => any} operation - the mutation.
+ * @param {(context: { state: Record<string, any>, append: Function }) => any} operation - the mutation.
  * @returns {Promise<any>} the operation result.
  */
 export function transact(workspace, operation) {
@@ -45,6 +46,16 @@ export function transact(workspace, operation) {
  */
 export function state(workspace) {
   return readState(workspace)
+}
+
+/**
+ * Create the goal every plan in a test points at.
+ * @param {string} workspace - the workspace root.
+ * @param {string} [id] - goal id.
+ * @returns {Promise<Record<string, any>>} the stored goal record.
+ */
+export function seedGoal(workspace, id = 'ship-it') {
+  return transact(workspace, (context) => createGoal(context, goalPayload(id)))
 }
 
 /**
@@ -83,7 +94,7 @@ export async function rejectsCode(operation, code, message) {
 }
 
 /**
- * A minimal valid goal payload.
+ * A minimal valid AMP Goal payload.
  * @param {string} id - goal id.
  * @returns {Record<string, unknown>} the payload.
  */
@@ -103,18 +114,21 @@ export function goalPayload(id = 'ship-it') {
 }
 
 /**
- * A minimal valid plan payload with one task.
+ * A minimal valid AMP Plan payload with two tasks.
  * @param {string} id - plan id.
- * @param {{ goal?: string }} [options] - optional goal reference.
+ * @param {string} [goal] - goal id the plan serves; the goal must already exist.
  * @returns {Record<string, unknown>} the payload.
  */
-export function planPayload(id = 'ship-plan', options = {}) {
+export function planPayload(id = 'ship-plan', goal = 'ship-it') {
   return {
     amp: '0.1',
     kind: 'plan',
     id,
-    ...(options.goal === undefined ? {} : { goal: { kind: 'goal', id: options.goal } }),
-    commitmentWindow: 2,
+    goal: { kind: 'goal', id: goal },
+    commitment_window: 2,
+    abandon_if: [
+      { id: 'no-value', statement: 'The outcome stops mattering', check: 'ask the user' },
+    ],
     tasks: [
       {
         id: 'write-server',

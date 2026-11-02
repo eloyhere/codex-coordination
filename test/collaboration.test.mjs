@@ -15,7 +15,16 @@ import {
   transitionDuty,
 } from '../plugins/codex-coordination/mcp/lib/collaboration.mjs'
 import { createPlan } from '../plugins/codex-coordination/mcp/lib/plans.mjs'
-import { dutyPayload, makeWorkspace, planPayload, rejectsCode, state, throwsCode, transact } from './helpers.mjs'
+import { dutyPayload, makeWorkspace, planPayload, rejectsCode, seedGoal, state, throwsCode, transact } from './helpers.mjs'
+
+test('a duty is a host projection, not an AMP object', async (t) => {
+  const workspace = makeWorkspace(t)
+  const duty = await transact(workspace, (context) => assignDuty(context, dutyPayload('projection')))
+  assert.equal('amp' in duty, false)
+  assert.equal('kind' in duty, false)
+  throwsCode(() => normaliseDutyInput({ goals: {}, plans: {} }, { ...dutyPayload(), amp: '0.1' }), 'INVALID_ARGUMENT', /amp is not a known field/)
+  throwsCode(() => normaliseDutyInput({ goals: {}, plans: {} }, { ...dutyPayload(), kind: 'duty' }), 'INVALID_ARGUMENT', /kind is not a known field/)
+})
 
 test('a duty needs two distinct declared identities', () => {
   throwsCode(
@@ -34,7 +43,7 @@ test('the full handoff path records evidence and the owner review', async (t) =>
   const workspace = makeWorkspace(t)
   const assigned = await transact(workspace, (context) => assignDuty(context, dutyPayload('review-it')))
   assert.equal(assigned.status, 'assigned')
-  assert.deepEqual(assigned.history[0].actor, 'codex-main')
+  assert.equal(assigned.history[0].actor, 'codex-main')
 
   await transact(workspace, (context) => transitionDuty(context, { id: 'review-it', action: 'accept', actor: 'codex-sub-1' }))
   await transact(workspace, (context) => transitionDuty(context, { id: 'review-it', action: 'start', actor: 'codex-sub-1' }))
@@ -62,6 +71,41 @@ test('the full handoff path records evidence and the owner review', async (t) =>
     'INVALID_STATE',
     /closed/,
   )
+})
+
+test('duty events enter the AMP chain with the recorded terms', async (t) => {
+  const workspace = makeWorkspace(t)
+  await transact(workspace, (context) => assignDuty(context, dutyPayload('evented')))
+  await transact(workspace, (context) => transitionDuty(context, { id: 'evented', action: 'accept', actor: 'codex-sub-1' }))
+  await transact(workspace, (context) => transitionDuty(context, { id: 'evented', action: 'start', actor: 'codex-sub-1' }))
+  await transact(workspace, (context) => transitionDuty(context, {
+    id: 'evented',
+    action: 'submit',
+    actor: 'codex-sub-1',
+    summary: 'Done',
+    evidence: ['output attached'],
+  }))
+
+  const document = state(workspace)
+  assert.deepEqual(document.journal.map((entry) => entry.kind), ['event', 'event', 'event', 'event'])
+  assert.deepEqual(document.journal[0].payload, {
+    type: 'duty.assigned',
+    duty: 'evented',
+    role: 'qualification',
+    owner: 'codex-main',
+    assignee: 'codex-sub-1',
+    responsibilities: ['Re-run the smoke script and report the observed output'],
+    acceptance: ['The reported output matches the run'],
+  })
+  assert.deepEqual(document.journal[1].payload, {
+    type: 'duty.transitioned',
+    duty: 'evented',
+    from: 'assigned',
+    to: 'accepted',
+    actor: 'codex-sub-1',
+  })
+  assert.equal(document.journal[3].payload.summary, 'Done')
+  assert.deepEqual(document.journal[3].payload.evidence, ['output attached'])
 })
 
 test('only the recorded side may move a duty', async (t) => {
@@ -135,6 +179,7 @@ test('a rejected duty can be accepted again', async (t) => {
 
 test('a plan task reference is validated against the ledger', async (t) => {
   const workspace = makeWorkspace(t)
+  await seedGoal(workspace, 'ship-it')
   await transact(workspace, (context) => createPlan(context, planPayload('ref-plan')))
   await rejectsCode(
     () => transact(workspace, (context) => assignDuty(context, { ...dutyPayload('bad-ref'), plan: 'missing-plan' })),

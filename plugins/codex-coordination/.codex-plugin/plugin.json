@@ -1,7 +1,7 @@
 {
   "name": "codex-coordination",
-  "version": "0.1.0",
-  "description": "A durable AMP coordination ledger for Codex: goals with observable success criteria, bounded plans, accountable handoffs, and a hash-chained audit trail, exposed as five MCP tools and four skills.",
+  "version": "0.2.0",
+  "description": "A durable AMP v0.1 coordination ledger for Codex: strict Goal and Plan artifacts, accountable handoffs, and an append-only ledger-snapshot chain, exposed as five MCP tools and four skills.",
   "author": {
     "name": "Eloy Kim",
     "email": "eloy.kim@outlook.com"
@@ -26,7 +26,7 @@
   "interface": {
     "displayName": "Coordination",
     "shortDescription": "Durable goals, plans and handoffs",
-    "longDescription": "Coordination gives Codex a durable ledger beside the repository: goals that name an observable outcome, plans of at most twelve dependency-checked tasks, handoffs between a declared owner and assignee, and a SHA-256 chained journal of every change. The five MCP tools record assertions and enforce the protocol's structure; they never pretend to run your checks or prove your evidence.",
+    "longDescription": "Coordination gives Codex a durable ledger beside the repository: goals that name an observable outcome, plans of at most twelve dependency-checked tasks, handoffs between a declared owner and assignee, and an append-only chain of AMP ledger entries. Goals and plans are strict Attention Manifest Protocol v0.1 artifacts and every entry is a sha256 chain link over canonical JSON; `coordination_check` exports the ledger-snapshot and verifies it. The five MCP tools record assertions and enforce the protocol's structure; they never pretend to run your checks or prove your evidence.",
     "developerName": "Eloy Kim",
     "category": "Productivity",
     "capabilities": [

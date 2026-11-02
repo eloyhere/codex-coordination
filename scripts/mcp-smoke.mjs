@@ -3,9 +3,9 @@
  * End-to-end smoke test of the MCP server over a real stdio pipe.
  *
  * The unit tests exercise the ledger in-process; this script exercises the part
- * only the wire can prove: that Codex can start the server, negotiate a
- * protocol version, list the tools, call them, and read results back. It also
- * tampers with one journal digest to prove the audit notices.
+ * only the wire can prove: that Codex can start the server, negotiate a protocol
+ * version, list the tools, call them, and read results back. It also tampers with
+ * one chain payload to prove the audit notices and refuses to export a snapshot.
  *
  * Usage: node scripts/mcp-smoke.mjs [--verbose]
  *
@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { readState, verifyJournal } from '../plugins/codex-coordination/mcp/lib/store.mjs'
+import { readState, verifyChain, verifySnapshot } from '../plugins/codex-coordination/mcp/lib/store.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SERVER = join(ROOT, 'plugins', 'codex-coordination', 'mcp', 'server.mjs')
@@ -159,17 +159,30 @@ function toolResult(response) {
   return { value, isError: result.isError === true, text }
 }
 
+/**
+ * Call one tool and return its parsed result.
+ * @param {Wire} wire - the client.
+ * @param {string} name - tool name.
+ * @param {Record<string, unknown>} args - tool arguments.
+ * @returns {Promise<{ value: any, isError: boolean, text: string }>} parsed result.
+ */
+function call(wire, name, args) {
+  return wire.request('tools/call', { name, arguments: args }).then((response) => toolResult(response))
+}
+
 async function main() {
   const workspace = mkdtempSync(join(tmpdir(), 'codex-coordination-smoke-'))
   const child = spawn(process.execPath, [SERVER], { stdio: ['pipe', 'pipe', 'pipe'], cwd: ROOT })
   const wire = new Wire(child)
-  try {    const initialize = await wire.request('initialize', {
+  try {
+    const initialize = await wire.request('initialize', {
       protocolVersion: '2025-06-18',
       capabilities: {},
       clientInfo: { name: 'mcp-smoke', version: '0.0.0' },
     })
     assertEqual(initialize.result?.protocolVersion, '2025-06-18', 'initialize echoes a supported protocol version')
     assertEqual(initialize.result?.serverInfo?.name, 'codex-coordination', 'initialize advertises the server name')
+    assertEqual(initialize.result?.serverInfo?.version, '0.2.0', 'initialize advertises the AMP-aware version')
     assertEqual(initialize.result?.capabilities?.tools !== undefined, true, 'initialize advertises the tools capability')
     assert(typeof initialize.result?.instructions === 'string' && initialize.result.instructions.includes('workspace'), 'initialize explains the workspace requirement')
     wire.notify('notifications/initialized')
@@ -180,8 +193,7 @@ async function main() {
     const list = await wire.request('tools/list')
     const tools = list.result?.tools ?? []
     assertEqual(tools.length, 5, 'five tools are registered')
-    const names = tools.map((tool) => tool.name).sort()
-    assertEqual(names, [
+    assertEqual(tools.map((tool) => tool.name).sort(), [
       'coordination_check',
       'coordination_goal',
       'coordination_handoff',
@@ -194,69 +206,121 @@ async function main() {
       assertEqual(tool.inputSchema?.type, 'object', `${tool.name} declares an object schema`)
     }
 
-    const status = toolResult(await wire.request('tools/call', { name: 'coordination_status', arguments: { workspace } }))
+    const status = await call(wire, 'coordination_status', { workspace })
     assertEqual(status.isError, false, 'status call succeeds')
     assertEqual(status.value?.counts?.goals, 0, 'a fresh workspace has no goals')
+    assertEqual(status.value?.amp, '0.1', 'status names the AMP wire version')
+    assertEqual(status.value?.ledger?.verified, true, 'an empty chain verifies')
 
-    const created = toolResult(await wire.request('tools/call', {
-      name: 'coordination_goal',
-      arguments: {
-        workspace,
-        action: 'create',
-        goal: {
-          amp: '0.1',
-          kind: 'goal',
-          id: 'smoke-goal',
-          statement: 'Prove the MCP server works end to end',
-          success: [{ id: 'handshake', statement: 'tools call round-trips', check: 'read this result' }],
-          value: 0.5,
-          priority: 1,
-        },
+    const created = await call(wire, 'coordination_goal', {
+      workspace,
+      action: 'create',
+      goal: {
+        amp: '0.1',
+        kind: 'goal',
+        id: 'smoke-goal',
+        statement: 'Prove the MCP server works end to end',
+        success: [{ id: 'handshake', statement: 'tools call round-trips', check: 'read this result' }],
+        value: 0.5,
+        priority: 1,
       },
-    }))
+    })
     assertEqual(created.isError, false, 'goal create succeeds')
-    assertEqual(created.value?.goal?.state, 'proposed', 'a new goal starts proposed')
+    assertEqual(created.value?.goal?.kind, 'goal', 'the result carries the AMP Goal artifact')
+    assertEqual(created.value?.lifecycle?.state, 'proposed', 'a new goal starts proposed')
 
-    const badGoal = toolResult(await wire.request('tools/call', {
-      name: 'coordination_goal',
-      arguments: { workspace, action: 'create', goal: { id: 'Bad Id', statement: 'x', success: [], value: 2 } },
-    }))
+    const badGoal = await call(wire, 'coordination_goal', {
+      workspace,
+      action: 'create',
+      goal: { id: 'Bad Id', statement: 'x', success: [], value: 2 },
+    })
     assertEqual(badGoal.isError, true, 'an invalid goal is rejected')
     assertEqual(badGoal.value?.error?.code, 'INVALID_ARGUMENT', 'the rejection carries a typed code')
 
-    const missingWorkspace = toolResult(await wire.request('tools/call', {
-      name: 'coordination_status',
-      arguments: {},
-    }))
+    const plan = await call(wire, 'coordination_plan', {
+      workspace,
+      action: 'create',
+      plan: {
+        id: 'smoke-plan',
+        goal: { kind: 'goal', id: 'smoke-goal' },
+        commitment_window: 2,
+        abandon_if: [{ id: 'stop', statement: 'the server stops answering', check: 'ping it' }],
+        tasks: [{
+          id: 'call-tools',
+          intent: 'Call every tool once',
+          actor: 'tool',
+          expect: { observation: 'each call answers', check: 'read every result' },
+        }],
+      },
+    })
+    assertEqual(plan.isError, false, 'plan create succeeds')
+    assertEqual(plan.value?.plan?.kind, 'plan', 'the result carries the AMP Plan artifact')
+    assertEqual(plan.value?.plan?.status, 'draft', 'a new plan is a draft')
+    assertEqual(plan.value?.plan?.commitment_window, 2, 'commitment_window is an AMP field')
+
+    const camelPlan = await call(wire, 'coordination_plan', {
+      workspace,
+      action: 'create',
+      plan: {
+        id: 'camel-plan',
+        goal: { kind: 'goal', id: 'smoke-goal' },
+        commitmentWindow: 2,
+        abandon_if: [{ id: 'stop', statement: 'x', check: 'y' }],
+        tasks: [{
+          id: 'only',
+          intent: 'work',
+          actor: 'self',
+          expect: { observation: 'x', check: 'y' },
+        }],
+      },
+    })
+    assertEqual(camelPlan.isError, true, 'a camelCase AMP field is rejected rather than renamed')
+    assert(String(camelPlan.value?.error?.message ?? '').includes('commitment_window'), 'the rejection names the AMP spelling')
+
+    const missingWorkspace = await call(wire, 'coordination_status', {})
     assertEqual(missingWorkspace.isError, true, 'a call without workspace is rejected')
     assert(String(missingWorkspace.value?.error?.message ?? '').includes('workspace'), 'the rejection names the missing field')
 
-    const unknownTool = toolResult(await wire.request('tools/call', { name: 'coordination_nope', arguments: { workspace } }))
+    const unknownTool = await call(wire, 'coordination_nope', { workspace })
     assertEqual(unknownTool.isError, true, 'an unknown tool is an error result')
 
     const unknownMethod = await wire.request('no/such/method', {})
     assertEqual(unknownMethod.error?.code, -32601, 'an unknown method is a JSON-RPC method-not-found')
 
-    const audit = toolResult(await wire.request('tools/call', { name: 'coordination_check', arguments: { workspace } }))
+    const audit = await call(wire, 'coordination_check', { workspace })
     assertEqual(audit.isError, false, 'check succeeds')
     assertEqual(audit.value?.ok, true, 'a freshly written ledger audits clean')
+    assertEqual(audit.value?.summary?.chain?.verified, true, 'the audit reports a verified chain')
+    assertEqual(audit.value?.journal?.[0]?.kind, 'goal', 'the journal page carries AMP entry kinds')
 
+    const snapshotResult = await call(wire, 'coordination_check', { workspace, action: 'snapshot' })
+    assertEqual(snapshotResult.isError, false, 'snapshot export succeeds')
+    const snapshot = snapshotResult.value?.snapshot
+    assertEqual(snapshot?.kind, 'ledger-snapshot', 'the snapshot carries the AMP kind')
+    assertEqual(snapshot?.amp, '0.1', 'the snapshot carries the AMP wire version')
+    assertEqual(verifySnapshot(snapshot).ok, true, 'the exported snapshot verifies')
+    assertEqual(snapshot?.entries?.[0]?.seq, 0, 'the first entry is seq 0')
+    assertEqual(snapshot?.entries?.[0]?.prev, `sha256:${'0'.repeat(64)}`, 'the first entry links to genesis')
+
+    const document = readState(workspace)
+    assertEqual(verifyChain(document).ok, true, 'the chain verifies')
+    assertEqual(document.count, 2, 'two mutations recorded two chain entries')
+
+    // Tamper with one payload: the audit must notice and the snapshot must be refused.
     const path = join(workspace, '.codex-coordination', 'ledger.json')
-    const state = readState(workspace)
-    assertEqual(verifyJournal(state).ok, true, 'the journal verifies')
-    assertEqual(state.seq, 1, 'one mutation recorded one journal entry')
-
-    // Tamper with the one entry: the audit must notice rather than repair it.
-    const document = JSON.parse(readFileSync(path, 'utf8'))
-    document.journal[0].digest = 'deadbeef'
-    writeFileSync(path, `${JSON.stringify(document, null, 2)}\n`, 'utf8')
-    const tampered = toolResult(await wire.request('tools/call', { name: 'coordination_check', arguments: { workspace } }))
-    assertEqual(tampered.value?.ok, false, 'a tampered journal is reported as failing')
+    const file = JSON.parse(readFileSync(path, 'utf8'))
+    file.journal[0].payload.statement = 'a different outcome'
+    writeFileSync(path, `${JSON.stringify(file, null, 2)}\n`, 'utf8')
+    const tampered = await call(wire, 'coordination_check', { workspace })
+    assertEqual(tampered.value?.ok, false, 'a tampered chain is reported as failing')
     assertEqual(
       (tampered.value?.violations ?? []).some((violation) => violation.code === 'LEDGER_CHAIN'),
       true,
       'the violation names the broken chain',
     )
+    const refused = await call(wire, 'coordination_check', { workspace, action: 'snapshot' })
+    assertEqual(refused.isError, true, 'a broken chain refuses to export a snapshot')
+    assertEqual(refused.value?.error?.code, 'INVALID_STATE', 'the refusal carries a typed code')
   } finally {
     wire.close()
     await new Promise((resolvePromise) => {

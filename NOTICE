@@ -4,17 +4,20 @@ Copyright 2026 Eloy Kim
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
 This product implements a subset of the Attention Manifest Protocol (AMP v0.1)
-object model as popularised by the `attention-manifest-protocol` npm package
+as published by the `attention-manifest-protocol` npm package
 (https://github.com/eloyhere/attention-manifest-protocol), Copyright 2026
 Eloy Kim, licensed under the Apache License, Version 2.0.
 
-The protocol vocabulary reused here is the Goal, Plan, Duty and ledger shape:
-`schema`-tagged objects with `amp: "0.1"` and `kind`, ids matching
-`^[a-z][a-z0-9._:-]{0,63}$`, an explicit lifecycle edge table, and a digest
-chain over canonical JSON. `mcp/lib/amp.mjs` declares those primitives;
-`mcp/lib/goals.mjs`, `plans.mjs`, `collaboration.mjs` and `check.mjs` implement
-the subset; `docs/PROTOCOL.md` records what was borrowed and what was reduced
-for a Codex-hosted, single-process server.
+The protocol surface reused here is the Goal and Plan object model, AMP ids
+(`^[a-z][a-z0-9._:-]{0,63}$`), `amp: "0.1"`-tagged objects, the lifecycle edge
+tables, canonical JSON digests with `sha256:` prefixes, the append-only
+`{seq, kind, payload, prev, hash}` chain and the exported `ledger-snapshot`.
+`mcp/lib/amp.mjs` declares those primitives; `mcp/lib/store.mjs` builds and
+verifies the chain and the snapshot; `mcp/lib/goals.mjs` and `plans.mjs` produce
+the artifacts; `collaboration.mjs` records duties as an explicitly labelled host
+projection rather than an AMP object kind. `docs/PROTOCOL.md` records what was
+adopted, how it is verified against the reference implementation, and what is
+deliberately not implemented.
 
 The server has no third-party runtime dependencies: only Node.js built-in
 modules (`node:crypto`, `node:fs`, `node:path`, `node:readline`) are imported.

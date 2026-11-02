@@ -9,12 +9,12 @@
  * @module codex-coordination/status
  */
 
-import { isRecord } from './amp.mjs'
+import { AMP_VERSION, isRecord } from './amp.mjs'
 import { auditLedger } from './check.mjs'
 import { pendingDutyActions, dutySummary } from './collaboration.mjs'
 import { GOAL_EDGES, goalSummary } from './goals.mjs'
-import { TERMINAL_TASK_STATUSES } from './plans.mjs'
-import { ledgerPath, verifyJournal } from './store.mjs'
+import { TERMINAL_TASK_STATUSES, planView } from './plans.mjs'
+import { ledgerPath, verifyChain } from './store.mjs'
 
 /** Default number of records per section. */
 export const DEFAULT_LIMIT = 10
@@ -26,14 +26,16 @@ export const DEFAULT_LIMIT = 10
  */
 function readyTasksOf(state) {
   const rows = []
-  for (const plan of Object.values(state.plans)) {
-    if (plan.status !== 'committed' && plan.status !== 'executing') continue
-    if (!Array.isArray(plan.tasks)) continue
-    const statusById = new Map(plan.tasks.map((task) => [task.id, task.status]))
-    for (const task of plan.tasks) {
+  for (const record of Object.values(state.plans)) {
+    if (!isRecord(record) || !isRecord(record.artifact)) continue
+    const artifact = record.artifact
+    if (artifact.status !== 'committed' && artifact.status !== 'executing') continue
+    if (!Array.isArray(artifact.tasks)) continue
+    const statusById = new Map(artifact.tasks.map((task) => [task.id, task.status]))
+    for (const task of artifact.tasks) {
       if (TERMINAL_TASK_STATUSES.includes(task.status) || task.status === 'running') continue
       const waiting = (Array.isArray(task.pre) ? task.pre : []).filter((dependency) => statusById.get(dependency) !== 'done')
-      if (waiting.length === 0) rows.push({ plan: plan.id, task: task.id, intent: task.intent })
+      if (waiting.length === 0) rows.push({ plan: artifact.id, task: task.id, intent: task.intent })
     }
   }
   return rows
@@ -55,22 +57,29 @@ function nextStepsOf(state, audit) {
   for (const row of pendingDutyActions(state)) {
     steps.push(`${row.action} duty ${row.duty} (waiting on ${row.waitingOn})`)
   }
-  for (const goal of Object.values(state.goals)) {
-    if (goal.state === 'proposed' && (GOAL_EDGES.proposed ?? []).includes('committed')) {
-      steps.push(`commit or abandon goal ${goal.id}`)
+  for (const record of Object.values(state.goals)) {
+    if (!isRecord(record) || !isRecord(record.artifact) || !isRecord(record.lifecycle)) continue
+    const id = record.artifact.id
+    if (record.lifecycle.state === 'proposed' && (GOAL_EDGES.proposed ?? []).includes('committed')) {
+      steps.push(`commit or abandon goal ${id}`)
     }
-    if (goal.state === 'active') {
-      const plan = Object.values(state.plans).find((candidate) => isRecord(candidate.goal) && candidate.goal.id === goal.id)
-      if (plan === undefined) steps.push(`create a plan for active goal ${goal.id}`)
+    if (record.lifecycle.state === 'active') {
+      const plan = Object.values(state.plans).find((candidate) => {
+        const artifact = isRecord(candidate) ? candidate.artifact : undefined
+        return isRecord(artifact) && isRecord(artifact.goal) && artifact.goal.id === id
+      })
+      if (plan === undefined) steps.push(`create a plan for active goal ${id}`)
     }
   }
   for (const row of readyTasksOf(state)) {
     steps.push(`start task ${row.task} in plan ${row.plan}`)
   }
-  for (const plan of Object.values(state.plans)) {
-    if (plan.status === 'executing' && Array.isArray(plan.tasks)
-      && plan.tasks.every((task) => TERMINAL_TASK_STATUSES.includes(task.status))) {
-      steps.push(`close plan ${plan.id}: every task is terminal`)
+  for (const record of Object.values(state.plans)) {
+    const artifact = isRecord(record) ? record.artifact : undefined
+    if (!isRecord(artifact)) continue
+    if (artifact.status === 'executing' && Array.isArray(artifact.tasks)
+      && artifact.tasks.every((task) => TERMINAL_TASK_STATUSES.includes(task.status))) {
+      steps.push(`close plan ${artifact.id}: every task is terminal`)
     }
   }
   if (!audit.ok) steps.push(`repair ${audit.violations.length} violation(s) with coordination_check`)
@@ -86,26 +95,32 @@ function nextStepsOf(state, audit) {
 export function buildStatus(state, options) {
   const limit = options.limit ?? DEFAULT_LIMIT
   const audit = auditLedger(state)
-  const chain = verifyJournal(state)
+  const chain = verifyChain(state)
   const goals = Object.values(state.goals)
+    .filter((record) => isRecord(record) && isRecord(record.artifact) && isRecord(record.lifecycle))
     .sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)))
     .slice(-limit)
-    .map((goal) => goalSummary(state, goal))
+    .map((record) => goalSummary(state, record))
   const plans = Object.values(state.plans)
-    .sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)))
+    .filter((record) => isRecord(record) && isRecord(record.artifact))
+    .sort((left, right) => String(left.artifact.created).localeCompare(String(right.artifact.created)))
     .slice(-limit)
-    .map((plan) => {
-      const taskRows = Array.isArray(plan.tasks) ? plan.tasks : []
+    .map((record) => {
+      const artifact = record.artifact
+      const progress = planView(record).progress
       return {
-        id: plan.id,
-        ...(isRecord(plan.goal) ? { goal: plan.goal.id } : {}),
-        status: plan.status,
-        tasks: taskRows.length,
-        done: taskRows.filter((task) => task.status === 'done').length,
-        blocked: taskRows.filter((task) => !TERMINAL_TASK_STATUSES.includes(task.status) && task.status !== 'running').length,
+        id: artifact.id,
+        ...(isRecord(artifact.goal) ? { goal: artifact.goal.id } : {}),
+        status: artifact.status,
+        commitment_window: artifact.commitment_window,
+        tasks: artifact.tasks.length,
+        done: progress.byStatus.done,
+        ready: progress.ready.length,
+        blocked: progress.blocked.length,
       }
     })
   const duties = Object.values(state.duties)
+    .filter((duty) => isRecord(duty))
     .sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)))
     .slice(-limit)
     .map((duty) => dutySummary(duty))
@@ -113,12 +128,12 @@ export function buildStatus(state, options) {
   return {
     ok: true,
     workspace: options.workspace,
+    amp: AMP_VERSION,
     ledger: {
       path: ledgerPath(options.workspace),
-      seq: state.seq,
-      head: state.head ?? null,
-      entries: chain.entries,
-      dropped: chain.dropped,
+      agent: state.agent,
+      tip: chain.tip,
+      count: chain.count,
       verified: chain.ok,
     },
     counts: {

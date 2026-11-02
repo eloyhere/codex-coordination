@@ -1,6 +1,6 @@
 ---
 name: coordination-planning
-description: Turn a goal into a bounded, dependency-checked plan and move its tasks honestly. 把目标拆成有界、可校验依赖关系的计划并如实推进任务。
+description: Turn a goal into a bounded AMP plan and move its tasks honestly. 把目标拆成有界 AMP 计划并如实推进任务。
 ---
 
 # Coordination planning
@@ -20,7 +20,15 @@ Every call takes `workspace`: the absolute repository root.
     "kind": "plan",
     "id": "export-plan",
     "goal": {"kind": "goal", "id": "deterministic-export"},
-    "commitmentWindow": 3,
+    "commitment_window": 3,
+    "budget": {"ms": 600000},
+    "abandon_if": [
+      {
+        "id": "no-value",
+        "statement": "The export path needs a network clock after all",
+        "check": "Read the writer's clock source"
+      }
+    ],
     "tasks": [
       {
         "id": "pin-clock",
@@ -47,11 +55,16 @@ Every call takes `workspace`: the absolute repository root.
 }
 ```
 
+- `goal` and `abandon_if` are **required**, because AMP requires them: a plan serves a goal, and a plan with no condition that would make it stop has no commitment. The goal must already exist.
+- Use AMP spellings: `commitment_window`, `abandon_if`. The camelCase forms are rejected with the field to use instead; guessing which spelling won would make the record depend on the caller's habit.
+- `edges`, `status` and `created` are computed by the server and rejected as input.
 - At most **12** tasks. A larger plan is not a plan, it is a backlog; split it.
 - Dependencies are declared on the task (`pre`) and the edge list is derived. Cycles are rejected.
 - `expect.check` is mandatory — a task whose result cannot be checked is not a task.
 - `irreversibility` is `0-3`: 0 trivially reversible, 3 destructive. Use it to decide what needs a confirmation before running.
-- `goal` is optional, but when present it must already exist.
+- `commitment_window` is `1-5` (default 3) and `budget` is an AMP budget object (default `{}`).
+
+The result carries `plan` (the strict AMP artifact), `progress` (ready and blocked tasks) and `history`.
 
 ## Commit, then execute
 
@@ -72,6 +85,8 @@ Rules the server enforces:
 - Task edges: `pending -> running|done|skipped`, `running -> done|failed|skipped`, `failed -> running|skipped`.
 - Starting the first task of a committed plan promotes the plan to `executing` automatically.
 
+Every plan mutation appends the updated Plan artifact as one `plan` chain entry, because the artifact itself changed (status, task status). Free-form notes live in the returned `history`; the artifact has no field for commentary.
+
 Close the plan only when every task is terminal (`done`, `failed` or `skipped`):
 
 ```json
@@ -84,4 +99,4 @@ Marking a task `done` records that you say it is done. Run the task's check firs
 
 ## 中文要点
 
-计划最多 12 个任务，依赖写在任务的 `pre` 上（自动成边、自动查环），每个任务必须有可执行的 `expect.check`；新计划是 `draft`，先 `committed` 才能动任务；任务进入 `running`/`done` 前所有前置必须为 `done`；所有任务终态后才能把计划置 `done`；`done` 只是记录，必须真的执行过检查。
+计划是严格的 AMP `Plan`：`goal` 与 `abandon_if` 必填，`edges`/`status`/`created` 由服务端计算、不接受输入；字段名用 AMP 拼写 `commitment_window`/`abandon_if`，驼峰写法会被拒绝并提示正确字段。最多 12 个任务，依赖写在任务的 `pre` 上（自动成边、自动查环），每个任务必须有可执行的 `expect.check`。新计划是 `draft`，先 `committed` 才能动任务；任务进入 `running`/`done` 前所有前置必须为 `done`；所有任务终态后才能把计划置 `done`。每次变更都会把更新后的 Plan 产物追加进链；`done` 只是记录，必须真的执行过检查。

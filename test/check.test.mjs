@@ -11,7 +11,7 @@ import { assignDuty, transitionDuty } from '../plugins/codex-coordination/mcp/li
 import { createGoal, transitionGoal } from '../plugins/codex-coordination/mcp/lib/goals.mjs'
 import { createPlan, transitionPlan, updateTask } from '../plugins/codex-coordination/mcp/lib/plans.mjs'
 import { writeState } from '../plugins/codex-coordination/mcp/lib/store.mjs'
-import { dutyPayload, goalPayload, makeWorkspace, planPayload, state, transact } from './helpers.mjs'
+import { dutyPayload, goalPayload, makeWorkspace, planPayload, seedGoal, state, transact } from './helpers.mjs'
 
 /**
  * Drive one goal/plan/duty set to a fully settled state.
@@ -22,7 +22,7 @@ async function settleEverything(workspace) {
   await transact(workspace, (context) => createGoal(context, goalPayload('audit-goal')))
   await transact(workspace, (context) => transitionGoal(context, 'audit-goal', 'committed'))
   await transact(workspace, (context) => transitionGoal(context, 'audit-goal', 'active'))
-  await transact(workspace, (context) => createPlan(context, planPayload('audit-plan', { goal: 'audit-goal' })))
+  await transact(workspace, (context) => createPlan(context, planPayload('audit-plan', 'audit-goal')))
   await transact(workspace, (context) => transitionPlan(context, 'audit-plan', 'committed'))
   await transact(workspace, (context) => transitionPlan(context, 'audit-plan', 'executing'))
   await transact(workspace, (context) => updateTask(context, 'audit-plan', 'write-server', 'done'))
@@ -57,15 +57,16 @@ test('a settled ledger audits clean and reports its shape', async (t) => {
   assert.equal(verdict.summary.goals, 1)
   assert.equal(verdict.summary.plans, 1)
   assert.equal(verdict.summary.duties, 1)
-  assert.equal(verdict.summary.journal.verified, true)
-  assert.ok(verdict.summary.journal.entries > 10)
+  assert.equal(verdict.summary.chain.verified, true)
+  assert.ok(verdict.summary.chain.count > 10)
+  assert.match(verdict.summary.chain.tip, /^sha256:[0-9a-f]{64}$/)
 })
 
-test('an edited journal entry is a chain violation', async (t) => {
+test('an edited chain entry is a chain violation', async (t) => {
   const workspace = makeWorkspace(t)
-  await transact(workspace, (context) => createGoal(context, goalPayload('chain')))
+  await seedGoal(workspace, 'chain')
   const document = state(workspace)
-  document.journal[0].digest = '0'.repeat(64)
+  document.journal[0].payload.value = 0.1
   writeState(workspace, document)
 
   const verdict = auditLedger(state(workspace))
@@ -75,9 +76,10 @@ test('an edited journal entry is a chain violation', async (t) => {
 
 test('an injected dependency cycle is reported', async (t) => {
   const workspace = makeWorkspace(t)
+  await seedGoal(workspace, 'ship-it')
   await transact(workspace, (context) => createPlan(context, planPayload('cycle-plan')))
   const document = state(workspace)
-  document.plans['cycle-plan'].tasks[0].pre = ['verify']
+  document.plans['cycle-plan'].artifact.tasks[0].pre = ['verify']
   writeState(workspace, document)
 
   const verdict = auditLedger(state(workspace))
@@ -87,14 +89,14 @@ test('an injected dependency cycle is reported', async (t) => {
 
 test('an achieved goal with an open plan is reported', async (t) => {
   const workspace = makeWorkspace(t)
-  await transact(workspace, (context) => createGoal(context, goalPayload('premature')))
+  await seedGoal(workspace, 'premature')
   await transact(workspace, (context) => transitionGoal(context, 'premature', 'committed'))
   await transact(workspace, (context) => transitionGoal(context, 'premature', 'active'))
-  await transact(workspace, (context) => createPlan(context, planPayload('open-plan', { goal: 'premature' })))
+  await transact(workspace, (context) => createPlan(context, planPayload('open-plan', 'premature')))
 
   const document = state(workspace)
   const goal = document.goals['premature']
-  goal.state = 'achieved'
+  goal.lifecycle.state = 'achieved'
   goal.updatedAt = new Date().toISOString()
   goal.history.push({ at: goal.updatedAt, from: 'active', to: 'achieved' })
   writeState(workspace, document)
@@ -127,4 +129,17 @@ test('a verified duty without a review is reported', async (t) => {
   const verdict = auditLedger(state(workspace))
   assert.equal(verdict.ok, false)
   assert.equal(verdict.violations.some((violation) => violation.code === 'DUTY_REVIEW_MISSING'), true)
+})
+
+test('a plan artifact that stopped matching its key is reported', async (t) => {
+  const workspace = makeWorkspace(t)
+  await seedGoal(workspace, 'ship-it')
+  await transact(workspace, (context) => createPlan(context, planPayload('renamed-plan')))
+  const document = state(workspace)
+  document.plans['renamed-plan'].artifact.id = 'other-id'
+  writeState(workspace, document)
+
+  const verdict = auditLedger(state(workspace))
+  assert.equal(verdict.ok, false)
+  assert.equal(verdict.violations.some((violation) => violation.code === 'PLAN_ARTIFACT_ID'), true)
 })

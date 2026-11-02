@@ -6,18 +6,26 @@
  * the rule it broke, because the point of the tool is to let a model repair its
  * own bookkeeping before it reports a result.
  *
- * Violations are things the protocol forbids (a broken digest chain, a cycle, a
- * verified handoff with no evidence). Warnings are things that are legal but
- * worth a look (an active goal with no plan).
+ * Two families are checked:
+ *
+ * - **The chain.** `verifyChain` recomputes every hash from its four covered
+ *   fields and the tip. A mismatch means the file was edited outside the tools;
+ *   the audit reports it and never rewrites it.
+ * - **The artifacts and projections.** Goal and Plan artifacts must still be
+ *   shaped like AMP objects, lifecycle edges must be legal, and a record that
+ *   claims a result must carry the record that supports it.
+ *
+ * Violations are things the protocol forbids; warnings are things that are legal
+ * but worth a look (an active goal with no plan).
  *
  * @module codex-coordination/check
  */
 
 import { isRecord } from './amp.mjs'
-import { GOAL_EDGES, GOAL_STATES, TERMINAL_GOAL_STATES, linkedPlans } from './goals.mjs'
+import { GOAL_EDGES, GOAL_STATES, linkedPlans } from './goals.mjs'
 import { PLAN_EDGES, PLAN_STATUSES, TERMINAL_TASK_STATUSES } from './plans.mjs'
 import { DUTY_EDGES, DUTY_STATUSES } from './collaboration.mjs'
-import { verifyJournal } from './store.mjs'
+import { verifyChain } from './store.mjs'
 
 /**
  * Detect a cycle in a task dependency graph.
@@ -52,122 +60,166 @@ export function auditLedger(state) {
   const violations = []
   const warnings = []
 
-  const journal = verifyJournal(state)
-  if (!journal.ok) {
-    for (const problem of journal.problems) {
-      violations.push({ code: 'LEDGER_CHAIN', id: 'ledger', message: 'journal chain does not verify', details: problem })
-    }
+  const chain = verifyChain(state)
+  for (const problem of chain.problems) {
+    violations.push({ code: 'LEDGER_CHAIN', id: 'ledger', message: 'the AMP chain does not verify', details: problem })
   }
 
   const goalStates = {}
-  for (const goal of Object.values(state.goals)) {
-    goalStates[goal.state] = (goalStates[goal.state] ?? 0) + 1
-    if (!GOAL_STATES.includes(goal.state)) {
-      violations.push({ code: 'GOAL_STATE', id: goal.id, message: `unknown goal state ${String(goal.state)}` })
+  for (const [key, record] of Object.entries(state.goals)) {
+    if (!isRecord(record) || !isRecord(record.artifact) || !isRecord(record.lifecycle)) {
+      violations.push({ code: 'GOAL_RECORD', id: key, message: 'goal is not an artifact plus a lifecycle record' })
+      continue
     }
-    if (!Array.isArray(goal.success) || goal.success.length === 0) {
-      violations.push({ code: 'GOAL_SUCCESS_MISSING', id: goal.id, message: 'goal has no success criteria' })
+    const artifact = record.artifact
+    const stateName = record.lifecycle.state
+    goalStates[stateName] = (goalStates[stateName] ?? 0) + 1
+    if (artifact.kind !== 'goal' || artifact.amp !== '0.1') {
+      violations.push({ code: 'GOAL_ARTIFACT', id: key, message: 'goal.artifact is not an AMP Goal' })
+    }
+    if (artifact.id !== key) {
+      violations.push({ code: 'GOAL_ARTIFACT_ID', id: key, message: `goal.artifact.id is ${String(artifact.id)}` })
+    }
+    if (!GOAL_STATES.includes(stateName)) {
+      violations.push({ code: 'GOAL_STATE', id: key, message: `unknown goal state ${String(stateName)}` })
+    }
+    if (!Array.isArray(artifact.success) || artifact.success.length === 0) {
+      violations.push({ code: 'GOAL_SUCCESS_MISSING', id: key, message: 'goal has no success criteria' })
     } else {
-      for (const criterion of goal.success) {
+      for (const criterion of artifact.success) {
         if (!isRecord(criterion) || typeof criterion.check !== 'string' || criterion.check.trim().length === 0) {
-          violations.push({ code: 'GOAL_CHECK_MISSING', id: goal.id, message: `success criterion ${String(criterion?.id)} has no check` })
+          violations.push({ code: 'GOAL_CHECK_MISSING', id: key, message: `success criterion ${String(criterion?.id)} has no check` })
         }
       }
     }
-    const history = Array.isArray(goal.history) ? goal.history : []
+    if (typeof artifact.value !== 'number' || artifact.value < 0 || artifact.value > 1) {
+      violations.push({ code: 'GOAL_VALUE', id: key, message: 'goal.value is outside [0, 1]' })
+    }
+    const history = Array.isArray(record.history) ? record.history : []
     const last = history[history.length - 1]
-    if (!isRecord(last) || last.to !== goal.state) {
-      violations.push({ code: 'GOAL_HISTORY', id: goal.id, message: 'goal history does not end at its current state' })
+    if (!isRecord(last) || last.to !== stateName) {
+      violations.push({ code: 'GOAL_HISTORY', id: key, message: 'goal history does not end at its current state' })
     }
     for (const transition of history) {
-      if (!isRecord(transition)) continue
-      if (transition.from === null) continue
+      if (!isRecord(transition) || transition.from === null) continue
       const allowed = GOAL_EDGES[transition.from] ?? []
       if (!allowed.includes(transition.to)) {
-        violations.push({ code: 'GOAL_EDGE', id: goal.id, message: `goal moved ${transition.from} -> ${transition.to} off the legal edges` })
+        violations.push({ code: 'GOAL_EDGE', id: key, message: `goal moved ${transition.from} -> ${transition.to} off the legal edges` })
       }
     }
-    if (goal.state === 'achieved') {
-      const unfinished = linkedPlans(state, goal.id).filter((plan) => plan.status !== 'done' && plan.status !== 'abandoned')
+    if (stateName === 'achieved') {
+      const unfinished = linkedPlans(state, key)
+        .filter((plan) => plan.artifact.status !== 'done' && plan.artifact.status !== 'abandoned')
       for (const plan of unfinished) {
-        violations.push({ code: 'GOAL_ACHIEVED_WITH_PLAN', id: goal.id, message: `achieved goal still has plan ${plan.id} in ${plan.status}` })
+        violations.push({
+          code: 'GOAL_ACHIEVED_WITH_PLAN',
+          id: key,
+          message: `achieved goal still has plan ${plan.artifact.id} in ${plan.artifact.status}`,
+        })
       }
     }
-    if (goal.state === 'active' && linkedPlans(state, goal.id).length === 0) {
-      warnings.push({ code: 'GOAL_ACTIVE_NO_PLAN', id: goal.id, message: 'active goal has no plan recording how it will be reached' })
+    if (stateName === 'active' && linkedPlans(state, key).length === 0) {
+      warnings.push({ code: 'GOAL_ACTIVE_NO_PLAN', id: key, message: 'active goal has no plan recording how it will be reached' })
     }
   }
 
-  for (const plan of Object.values(state.plans)) {
-    if (!PLAN_STATUSES.includes(plan.status)) {
-      violations.push({ code: 'PLAN_STATE', id: plan.id, message: `unknown plan state ${String(plan.status)}` })
-    }
-    if (!Array.isArray(plan.tasks) || plan.tasks.length === 0) {
-      violations.push({ code: 'PLAN_EMPTY', id: plan.id, message: 'plan has no tasks' })
+  const planStates = {}
+  for (const [key, record] of Object.entries(state.plans)) {
+    if (!isRecord(record) || !isRecord(record.artifact)) {
+      violations.push({ code: 'PLAN_RECORD', id: key, message: 'plan is not an artifact record' })
       continue
     }
-    if (isRecord(plan.goal) && !isRecord(state.goals[plan.goal.id])) {
-      violations.push({ code: 'PLAN_GOAL_MISSING', id: plan.id, message: `plan references unknown goal ${String(plan.goal.id)}` })
+    const artifact = record.artifact
+    planStates[artifact.status] = (planStates[artifact.status] ?? 0) + 1
+    if (artifact.kind !== 'plan' || artifact.amp !== '0.1') {
+      violations.push({ code: 'PLAN_ARTIFACT', id: key, message: 'plan.artifact is not an AMP Plan' })
+    }
+    if (artifact.id !== key) {
+      violations.push({ code: 'PLAN_ARTIFACT_ID', id: key, message: `plan.artifact.id is ${String(artifact.id)}` })
+    }
+    if (!PLAN_STATUSES.includes(artifact.status)) {
+      violations.push({ code: 'PLAN_STATE', id: key, message: `unknown plan state ${String(artifact.status)}` })
+    }
+    if (!Array.isArray(artifact.abandon_if) || artifact.abandon_if.length === 0) {
+      violations.push({ code: 'PLAN_ABANDON_IF_MISSING', id: key, message: 'plan has no abandon_if condition' })
+    }
+    if (!isRecord(artifact.goal) || !isRecord(state.goals[artifact.goal.id])) {
+      violations.push({ code: 'PLAN_GOAL_MISSING', id: key, message: `plan references unknown goal ${String(artifact.goal?.id)}` })
+    }
+    if (typeof artifact.commitment_window !== 'number' || artifact.commitment_window < 1 || artifact.commitment_window > 5) {
+      violations.push({ code: 'PLAN_WINDOW', id: key, message: 'plan.commitment_window is outside 1-5' })
+    }
+    if (!Array.isArray(artifact.tasks) || artifact.tasks.length === 0) {
+      violations.push({ code: 'PLAN_EMPTY', id: key, message: 'plan has no tasks' })
+      continue
     }
     const ids = new Set()
-    for (const task of plan.tasks) {
-      if (ids.has(task.id)) violations.push({ code: 'TASK_DUPLICATE', id: plan.id, message: `task id ${task.id} repeats` })
+    for (const task of artifact.tasks) {
+      if (ids.has(task.id)) violations.push({ code: 'TASK_DUPLICATE', id: key, message: `task id ${task.id} repeats` })
       ids.add(task.id)
       if (!isRecord(task.expect) || typeof task.expect.check !== 'string' || task.expect.check.trim().length === 0) {
-        violations.push({ code: 'TASK_CHECK_MISSING', id: plan.id, message: `task ${task.id} has no expected check` })
+        violations.push({ code: 'TASK_CHECK_MISSING', id: key, message: `task ${task.id} has no expected check` })
       }
       for (const dependency of Array.isArray(task.pre) ? task.pre : []) {
-        if (!plan.tasks.some((candidate) => candidate.id === dependency)) {
-          violations.push({ code: 'TASK_PRE_MISSING', id: plan.id, message: `task ${task.id} depends on unknown task ${dependency}` })
+        if (!artifact.tasks.some((candidate) => candidate.id === dependency)) {
+          violations.push({ code: 'TASK_PRE_MISSING', id: key, message: `task ${task.id} depends on unknown task ${dependency}` })
         }
       }
     }
-    for (const id of cyclicTaskIds(plan.tasks)) {
-      violations.push({ code: 'PLAN_CYCLE', id: plan.id, message: `task dependencies contain a cycle through ${id}` })
+    for (const id of cyclicTaskIds(artifact.tasks)) {
+      violations.push({ code: 'PLAN_CYCLE', id: key, message: `task dependencies contain a cycle through ${id}` })
     }
-    for (const transition of Array.isArray(plan.history) ? plan.history : []) {
-      if (!isRecord(transition) || transition.from === null) continue
+    for (const transition of Array.isArray(record.history) ? record.history : []) {
+      if (!isRecord(transition) || transition.from === null || transition.task !== undefined) continue
       const allowed = PLAN_EDGES[transition.from] ?? []
       if (!allowed.includes(transition.to)) {
-        violations.push({ code: 'PLAN_EDGE', id: plan.id, message: `plan moved ${transition.from} -> ${transition.to} off the legal edges` })
+        violations.push({ code: 'PLAN_EDGE', id: key, message: `plan moved ${transition.from} -> ${transition.to} off the legal edges` })
       }
     }
-    if (plan.status === 'done') {
-      const unfinished = plan.tasks.filter((task) => !TERMINAL_TASK_STATUSES.includes(task.status)).map((task) => task.id)
+    if (artifact.status === 'done') {
+      const unfinished = artifact.tasks.filter((task) => !TERMINAL_TASK_STATUSES.includes(task.status)).map((task) => task.id)
       if (unfinished.length > 0) {
-        violations.push({ code: 'PLAN_DONE_WITH_TASKS', id: plan.id, message: `done plan still has ${unfinished.length} unfinished task(s)` })
+        violations.push({ code: 'PLAN_DONE_WITH_TASKS', id: key, message: `done plan still has ${unfinished.length} unfinished task(s)` })
       }
     }
     const derived = []
-    for (const task of plan.tasks) {
+    for (const task of artifact.tasks) {
       for (const dependency of Array.isArray(task.pre) ? task.pre : []) derived.push(`${dependency}>${task.id}`)
     }
-    const recorded = Array.isArray(plan.edges) ? plan.edges.map((edge) => `${edge[0]}>${edge[1]}`) : derived
+    const recorded = Array.isArray(artifact.edges) ? artifact.edges.map((edge) => `${edge[0]}>${edge[1]}`) : derived
     if (derived.length !== recorded.length || derived.some((edge) => !recorded.includes(edge))) {
-      violations.push({ code: 'PLAN_EDGES_DRIFT', id: plan.id, message: 'plan.edges no longer match the task predecessors' })
+      violations.push({ code: 'PLAN_EDGES_DRIFT', id: key, message: 'plan.edges no longer match the task predecessors' })
     }
   }
 
   const dutyStates = {}
-  for (const duty of Object.values(state.duties)) {
+  for (const [key, duty] of Object.entries(state.duties)) {
+    if (!isRecord(duty)) {
+      violations.push({ code: 'DUTY_RECORD', id: key, message: 'duty is not a record' })
+      continue
+    }
     dutyStates[duty.status] = (dutyStates[duty.status] ?? 0) + 1
     if (!DUTY_STATUSES.includes(duty.status)) {
-      violations.push({ code: 'DUTY_STATE', id: duty.id, message: `unknown duty state ${String(duty.status)}` })
+      violations.push({ code: 'DUTY_STATE', id: key, message: `unknown duty state ${String(duty.status)}` })
+    }
+    if (duty.id !== key) {
+      violations.push({ code: 'DUTY_ID', id: key, message: `duty.id is ${String(duty.id)}` })
     }
     if (isRecord(duty.reference)) {
       const reference = duty.reference
       if (reference.kind === 'goal' && !isRecord(state.goals[reference.id])) {
-        violations.push({ code: 'DUTY_REF_MISSING', id: duty.id, message: `duty references unknown goal ${String(reference.id)}` })
+        violations.push({ code: 'DUTY_REF_MISSING', id: key, message: `duty references unknown goal ${String(reference.id)}` })
       }
       if (reference.kind === 'plan' && !isRecord(state.plans[reference.id])) {
-        violations.push({ code: 'DUTY_REF_MISSING', id: duty.id, message: `duty references unknown plan ${String(reference.id)}` })
+        violations.push({ code: 'DUTY_REF_MISSING', id: key, message: `duty references unknown plan ${String(reference.id)}` })
       }
       if (reference.kind === 'task') {
         const plan = state.plans[reference.plan]
+        const tasks = isRecord(plan) && isRecord(plan.artifact) && Array.isArray(plan.artifact.tasks) ? plan.artifact.tasks : []
         if (!isRecord(plan)) {
-          violations.push({ code: 'DUTY_REF_MISSING', id: duty.id, message: `duty references unknown plan ${String(reference.plan)}` })
-        } else if (!plan.tasks.some((task) => task.id === reference.id)) {
-          violations.push({ code: 'DUTY_REF_MISSING', id: duty.id, message: `duty references unknown task ${String(reference.id)}` })
+          violations.push({ code: 'DUTY_REF_MISSING', id: key, message: `duty references unknown plan ${String(reference.plan)}` })
+        } else if (!tasks.some((task) => task.id === reference.id)) {
+          violations.push({ code: 'DUTY_REF_MISSING', id: key, message: `duty references unknown task ${String(reference.id)}` })
         }
       }
     }
@@ -175,27 +227,27 @@ export function auditLedger(state) {
       if (!isRecord(transition) || transition.from === null) continue
       const allowed = DUTY_EDGES[transition.from] ?? []
       if (!allowed.includes(transition.to)) {
-        violations.push({ code: 'DUTY_EDGE', id: duty.id, message: `duty moved ${transition.from} -> ${transition.to} off the legal edges` })
+        violations.push({ code: 'DUTY_EDGE', id: key, message: `duty moved ${transition.from} -> ${transition.to} off the legal edges` })
       }
     }
     if (duty.status === 'submitted') {
       if (typeof duty.summary !== 'string' || duty.summary.trim().length === 0) {
-        violations.push({ code: 'DUTY_SUMMARY_MISSING', id: duty.id, message: 'submitted duty has no summary' })
+        violations.push({ code: 'DUTY_SUMMARY_MISSING', id: key, message: 'submitted duty has no summary' })
       }
       if (!Array.isArray(duty.evidence) || duty.evidence.length === 0) {
-        violations.push({ code: 'DUTY_EVIDENCE_MISSING', id: duty.id, message: 'submitted duty has no evidence' })
+        violations.push({ code: 'DUTY_EVIDENCE_MISSING', id: key, message: 'submitted duty has no evidence' })
       }
     }
     if (duty.status === 'verified') {
       if (typeof duty.review !== 'string' || duty.review.trim().length === 0) {
-        violations.push({ code: 'DUTY_REVIEW_MISSING', id: duty.id, message: 'verified duty has no owner review' })
+        violations.push({ code: 'DUTY_REVIEW_MISSING', id: key, message: 'verified duty has no owner review' })
       }
       if (!Array.isArray(duty.evidence) || duty.evidence.length === 0) {
-        violations.push({ code: 'DUTY_EVIDENCE_MISSING', id: duty.id, message: 'verified duty has no evidence' })
+        violations.push({ code: 'DUTY_EVIDENCE_MISSING', id: key, message: 'verified duty has no evidence' })
       }
     }
     if (duty.status === 'rejected' && (typeof duty.review !== 'string' || duty.review.trim().length === 0)) {
-      violations.push({ code: 'DUTY_REVIEW_MISSING', id: duty.id, message: 'rejected duty has no reason in review' })
+      violations.push({ code: 'DUTY_REVIEW_MISSING', id: key, message: 'rejected duty has no reason in review' })
     }
   }
 
@@ -204,12 +256,12 @@ export function auditLedger(state) {
     plans: Object.keys(state.plans).length,
     duties: Object.keys(state.duties).length,
     goalStates,
+    planStates,
     dutyStates,
-    journal: {
-      entries: journal.entries,
-      dropped: journal.dropped,
-      head: journal.head,
-      verified: journal.ok,
+    chain: {
+      count: chain.count,
+      tip: chain.tip,
+      verified: chain.ok,
     },
   }
   return { ok: violations.length === 0, violations, warnings, summary }

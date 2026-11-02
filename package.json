@@ -1,8 +1,8 @@
 {
   "name": "codex-coordination",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "A Codex plugin that keeps a durable AMP coordination ledger beside a repository: goals, bounded plans, accountable handoffs and a hash-chained audit trail, exposed as five MCP tools and four skills.",
+  "description": "A Codex plugin that keeps a durable AMP coordination ledger beside a repository: strict AMP Goal and Plan artifacts, accountable handoffs and an append-only ledger-snapshot chain, exposed as five MCP tools and four skills.",
   "keywords": [
     "codex",
     "codex-plugin",
@@ -34,11 +34,14 @@
     "smoke": "node scripts/mcp-smoke.mjs",
     "test": "node --test \"test/*.test.mjs\"",
     "check": "npm run validate && npm test && npm run smoke",
+    "conformance": "node scripts/amp-conformance.mjs",
+    "snapshot": "node scripts/amp-snapshot.mjs",
     "serve": "node plugins/codex-coordination/mcp/server.mjs"
   },
   "files": [
     ".agents/plugins/marketplace.json",
     "plugins/codex-coordination/**",
+    "docs/**",
     "scripts/**",
     "test/**",
     "README.md",

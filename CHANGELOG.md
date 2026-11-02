@@ -3,6 +3,55 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog; the project adheres to Semantic Versioning.
 
+## [0.2.0] — 2026-11-03
+
+The ledger now emits strict AMP v0.1 artifacts instead of AMP-shaped
+approximations.
+
+### Added
+
+- **AMP chain** (`mcp/lib/store.mjs`): entries are `{seq, kind, payload, prev, hash}`
+  with `hash = digestOf({seq, kind, payload, prev})`, `seq` from zero and
+  `seq 0` linked to `sha256:` + 64 zeros. The advisory `at` timestamp is host
+  metadata and is excluded from the hash.
+- **`ledger-snapshot` export** (`snapshotOf`, `verifySnapshot`): `coordination_check`
+  with `action:"snapshot"` returns the artifact and refuses a chain that does not
+  verify; `scripts/amp-snapshot.mjs` writes the same value to
+  `<workspace>/.codex-coordination/ledger-snapshot.json`.
+- **Reference conformance** (`scripts/amp-conformance.mjs`): imports
+  `attention-manifest-protocol` 0.5.0, compares `canonicalJson`/`digestOf` byte for
+  byte, validates every emitted Goal and Plan against `plan.schema.json`, validates
+  the snapshot against `ledger-snapshot.schema.json`, and verifies the chain with
+  the reference's own `verifySnapshot`.
+- **Strict canonical JSON**: RFC 8785-style ordering plus rejection of
+  `undefined`, non-finite numbers, `-0`, unpaired surrogates, sparse arrays and
+  class instances.
+- **Strict input validation**: `requireExactKeys` rejects unknown and missing
+  fields; AMP spellings (`commitment_window`, `abandon_if`) are required and
+  camelCase is rejected with the field to use instead.
+
+### Changed
+
+- **Goals** are stored as a strict AMP `Goal` artifact plus AMP's `GoalLifecycle`;
+  tool results return `goal` (the artifact) beside `lifecycle`, `createdAt`,
+  `updatedAt` and `history`.
+- **Plans** are strict AMP `Plan` artifacts: `goal` and `abandon_if` are required,
+  `edges` are derived, `commitment_window` is 1–5, `budget` defaults to `{}`, and
+  `status`/`created` are stamped by the server. Every mutation appends the updated
+  artifact.
+- **Duties** are explicitly host projections: no `amp`/`kind` fields, recorded in
+  the chain as bounded `duty.assigned` / `duty.transitioned` events.
+- **Goal transitions** are chained as `event` entries (the artifact does not
+  change), **plan mutations** as updated `plan` entries.
+- Ledger document version is **2**; chain truncation was removed, because a
+  truncated chain cannot verify from genesis.
+
+### Removed
+
+- The 0.1 journal shape (`{seq, at, type, id, data, prev, digest}`) and its
+  unprefixed hex digests. A 0.1 ledger is refused with `INVALID_STATE` rather than
+  re-chained.
+
 ## [0.1.0] — 2026-11-03
 
 First release: a working Codex plugin, not a scaffold.
