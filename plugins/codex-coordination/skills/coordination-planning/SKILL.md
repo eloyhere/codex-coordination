@@ -99,4 +99,10 @@ Marking a task `done` records that you say it is done. Run the task's check firs
 
 ## 中文要点
 
+For an explicit request to record attention allocation, use `coordination_protocol`
+with `action:"describe"` and `kind:"frame"`, then validate and record the complete
+frame. Preserve the caller's reasons, exclusions, revisit conditions and declared
+budget; do not invent measured usage or infer attention from hidden reasoning.
+Use `coordination_dashboard` when the user wants to inspect the records visually.
+
 计划是严格的 AMP `Plan`：`goal` 与 `abandon_if` 必填，`edges`/`status`/`created` 由服务端计算、不接受输入；字段名用 AMP 拼写 `commitment_window`/`abandon_if`，驼峰写法会被拒绝并提示正确字段。最多 12 个任务，依赖写在任务的 `pre` 上（自动成边、自动查环），每个任务必须有可执行的 `expect.check`。新计划是 `draft`，先 `committed` 才能动任务；任务进入 `running`/`done` 前所有前置必须为 `done`；所有任务终态后才能把计划置 `done`。每次变更都会把更新后的 Plan 产物追加进链；`done` 只是记录，必须真的执行过检查。

@@ -1,7 +1,7 @@
 {
   "name": "codex-coordination",
-  "version": "0.2.0",
-  "description": "A durable AMP v0.1 coordination ledger for Codex: strict Goal and Plan artifacts, accountable handoffs, and an append-only ledger-snapshot chain, exposed as five MCP tools and four skills.",
+  "version": "0.5.1",
+  "description": "Native AMP services, editable registries and domain runtimes for Codex, with TypeScript, React and Periodicity.",
   "author": {
     "name": "Eloy Kim",
     "email": "eloy.kim@outlook.com"
@@ -25,17 +25,18 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Coordination",
-    "shortDescription": "Durable goals, plans and handoffs",
-    "longDescription": "Coordination gives Codex a durable ledger beside the repository: goals that name an observable outcome, plans of at most twelve dependency-checked tasks, handoffs between a declared owner and assignee, and an append-only chain of AMP ledger entries. Goals and plans are strict Attention Manifest Protocol v0.1 artifacts and every entry is a sha256 chain link over canonical JSON; `coordination_check` exports the ledger-snapshot and verifies it. The five MCP tools record assertions and enforce the protocol's structure; they never pretend to run your checks or prove your evidence.",
+    "shortDescription": "Goals, context and teamwork",
+    "longDescription": "Connect Codex to native AMP workspace, filesystem, search, registry, warrant, governance, signing, delegation and runtime services through MCP. Inspect and edit state in the React / Periodicity workbench.",
     "developerName": "Eloy Kim",
     "category": "Productivity",
     "capabilities": [
       "Read",
-      "Write"
+      "Write",
+      "Interactive"
     ],
     "websiteURL": "https://github.com/eloyhere/codex-coordination",
-    "privacyPolicyURL": "https://github.com/eloyhere/codex-coordination#privacy",
-    "termsOfServiceURL": "https://github.com/eloyhere/codex-coordination#license",
+    "privacyPolicyURL": "https://github.com/eloyhere/codex-coordination#privacy-and-limits",
+    "termsOfServiceURL": "https://github.com/eloyhere/codex-coordination/blob/main/LICENSE",
     "defaultPrompt": [
       "Check the coordination ledger for this repository and tell me what is still open",
       "Record this outcome as a goal with observable success criteria, then plan the steps",
@@ -44,6 +45,7 @@
     "brandColor": "#0F766E",
     "composerIcon": "./assets/composer-icon.svg",
     "logo": "./assets/logo.svg",
-    "screenshots": []
+    "screenshots": [],
+    "supportURL": "https://github.com/eloyhere/codex-coordination/issues"
   }
 }

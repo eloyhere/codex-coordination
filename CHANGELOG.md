@@ -3,6 +3,70 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog; the project adheres to Semantic Versioning.
 
+## [0.5.1] — 2026-11-03
+
+- Render coordination_notification with Periodicity Snackbar, Popover, Dialog and Alert, including anchors, severity, multiline messages, durations and dismiss-only actions.
+- Share agent-delivered and workbench notifications through a deduplicated display queue; support notification-only MCP App views.
+- Add production bridge checks for all four surfaces, dismissal, timed closure, queue order, replay deduplication and initial notification delivery.
+
+## [0.5.0] — 2026-11-03
+
+- Copy all 24 agent tool implementations and eight workflow skills from deepseek-coordination 0.23.2, keeping formal coordination_* names. Verify a 152-file source snapshot before every build; retain licenses and notices.
+- Add coordination_project over native AMP. Merge colliding goal/plan/workspace interfaces with their existing parameter forms; preserve the original JSON ledger and all 60 canonical AMP definitions. The combined surface has 98 tools and 13 skills.
+- Bind copied file operations to AMP authorization, commands and approvals to correlated MCP host decisions, notifications to MCP results/UI, and search plus knowledge-file metadata to the existing AMP Elasticsearch backend.
+- Add coordination_context search/read/detail/metrics: exact tool discovery, one-call native reading/settlement, compact default pages, durable full-result references, explicit file/target line ranges and static catalog/projection accounting.
+- Shorten server guidance, compact JSON transport text and workspace diagnostics, and expose every named tool in the React workbench.
+- Preserve explicit boundaries for DSH-only composer, native-child and conversation-compaction ports. Measure output characters separately from unknown Codex token/cache usage.
+
+## [0.4.1] — 2026-11-03
+
+- Upgrade to AMP 0.6.3, which caches immutable input digests during compiler scanning and preserves the exact original revision/source bytes.
+- Exclude this plugin's explicitly marked generated server bundles from semantic scans, retaining paged filesystem access and TypeScript source indexing.
+- Add optional scan phase timings under CODEX_COORDINATION_DEBUG and a generated-bundle regression check. Fix first binding of this repository exceeding the MCP timeout.
+- Advertise positional JSON argument types explicitly so MCP hosts can pass numbers, objects and nested arrays without stringifying them.
+
+## [0.4.0] — 2026-11-03
+
+- Import published AMP 0.6.2, including its compiler, Markdown, Office and TeX scanners; reuse native search and domain algorithms.
+- Expose all 60 canonical AMP agent service definitions unchanged, nine host adapters and the existing seven coordination tools.
+- Make all 16 registry families editable and connect their native consumers, including parser dispatch, SQL dialects, cognitive behaviors and tool aliases. Persist versions and replayable edits.
+- Add native context settlement, schema artifacts, evidence, warrants, calibration, attention, delegation, governance, workflows, signed envelopes, key lifecycle and durable domain resource access.
+- Bind configured MCP HTTP/stdio, A2A, AMP team and cooperation transports with native catalog pins, budgets, receipts and correlated host approval.
+- Integrate native CognitiveRuntime, KernelRuntime and GovernedTask with SQLite sessions, turns, outbox and measured provider usage.
+- Add the React / Periodicity AMP workbench, private host configuration, search process lifecycle and capability/configuration documentation.
+
+## [0.3.1] — 2026-11-03
+
+### Fixed
+
+- Restore Periodicity React's default button and card ripple effects by removing
+  the wrapper overrides that disabled them.
+- Publish a new plugin cache version so the repaired UI can be installed without
+  replacing the active 0.3.0 cache directory.
+
+## [0.3.0] — 2026-11-03
+
+### Changed
+
+- Migrate server source to strict TypeScript under `src/mcp`, retaining generated
+  installable `.mjs` output and compatibility with version 2 ledgers.
+- Import `attention-manifest-protocol@0.6.0` directly from npm for canonical JSON,
+  digests, cloning, goal lifecycle, plan preconditions, schemas and snapshot
+  verification. Bundle runtime dependencies; require Node.js 24+.
+- Run AMP conformance against the installed npm package by default, retaining
+  optional `--amp` checkout comparisons.
+
+### Added
+
+- React 19 / `periodicity-react@0.1.15` dashboard with goals, plans, handoffs,
+  attention records, audits, filtering, snapshot export and JSON validation.
+- MCP Apps HTML resource, thread entrypoint, structured tool results, host theme
+  and safe-area integration, plus a loopback read-only development preview.
+- `coordination_protocol` for schema discovery, validation, and immutable
+  frame/receipt recording; `coordination_dashboard` for opening the interface.
+- Lockfile, separate server/UI builds, third-party license output and browser
+  checks of responsive layouts and the production MCP Apps bridge.
+
 ## [0.2.0] — 2026-11-03
 
 The ledger now emits strict AMP v0.1 artifacts instead of AMP-shaped

@@ -217,9 +217,12 @@ if (marketplace !== null) {
       check(manifest.version === packageJson.version, `${manifestLabel}: version must match package.json (${String(packageJson.version)})`)
     }
     if (existsSync(serverPath)) {
-      const advertised = /name:\s*'codex-coordination',\s*version:\s*'([^']+)'/.exec(readFileSync(serverPath, 'utf8'))
+      const advertised = /name:\s*["']codex-coordination["'],\s*version:\s*["']([^"']+)["']/.exec(readFileSync(serverPath, 'utf8'))
       check(advertised !== null && advertised[1] === manifest.version, `${entry.name}: server.mjs serverInfo.version must match the manifest`)
     }
+    const appPath = join(pluginRoot, 'app', 'index.html')
+    check(existsSync(appPath), `${entry.name}: React app build is missing; run npm run build`)
+    if (existsSync(appPath)) check(!/<script[^>]+src=/.test(readFileSync(appPath, 'utf8')), `${entry.name}: app scripts must be bundled inline`)
   }
 }
 

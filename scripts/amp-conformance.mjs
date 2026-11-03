@@ -4,17 +4,15 @@
  * with the Attention Manifest Protocol reference implementation.
  *
  * This is the check that turns "strictly follows AMP" from a claim into a
- * measurement. It is deliberately *not* part of `npm run check`: it needs a
- * checkout of `attention-manifest-protocol`, and this plugin must keep working
- * from a bare clone with no dependency installed. Run it when the protocol
- * changes or before a release:
+ * measurement. It runs in `npm run check` against the installed npm package.
+ * An explicit protocol checkout may also be compared before a release:
  *
  * ```
  * node scripts/amp-conformance.mjs --amp R:/project/attention-manifest-protocol
  * ```
  *
- * With no `--amp`, `AMP_PACKAGE_DIR` is read; with neither, the adjacent
- * checkout is used when it exists. The script:
+ * With no `--amp`, `AMP_PACKAGE_DIR` is read; with neither, the installed
+ * npm package is used. The script:
  *
  * 1. drives the real ledger through a goal, a plan and a full handoff;
  * 2. compares `canonicalJson` and `digestOf` with the reference's own functions;
@@ -33,7 +31,8 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { dirname } from 'node:path'
 
 import { GENESIS, canonicalJson, digestOf } from '../plugins/codex-coordination/mcp/lib/amp.mjs'
 import { assignDuty, transitionDuty } from '../plugins/codex-coordination/mcp/lib/collaboration.mjs'
@@ -54,7 +53,7 @@ function usage(code) {
     'usage: node scripts/amp-conformance.mjs [--amp <attention-manifest-protocol>] [--keep] [--verbose]',
     '',
     '  --amp <dir>   checkout of attention-manifest-protocol (default: $AMP_PACKAGE_DIR,',
-    '                then the adjacent R:/project/attention-manifest-protocol when present)',
+    '                then the installed npm package)',
     '  --keep        keep the temporary workspace',
     '  --verbose     print every schema problem instead of the first',
   ].join('\n')
@@ -77,7 +76,7 @@ function option(name) {
 
 const keep = args.includes('--keep')
 const verbose = args.includes('--verbose')
-const fallback = 'R:/project/attention-manifest-protocol'
+const fallback = dirname(fileURLToPath(import.meta.resolve('attention-manifest-protocol/package.json')))
 const ampDir = resolve(option('--amp') ?? process.env.AMP_PACKAGE_DIR ?? fallback)
 const schemaDir = join(ampDir, 'docs', 'schemas')
 const referenceCanonical = join(ampDir, 'lib', 'semantic', 'canonical.js')

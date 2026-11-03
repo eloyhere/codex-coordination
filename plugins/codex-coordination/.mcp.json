@@ -24,7 +24,19 @@
         "ProgramW6432",
         "NODE_EXE",
         "CODEX_COORDINATION_WORKSPACE",
-        "CODEX_COORDINATION_DEBUG"
+        "CODEX_COORDINATION_DEBUG",
+        "CODEX_COORDINATION_SCHEMA_DETAIL",
+        "CODEX_AMP_DATABASE",
+        "CODEX_AMP_SEARCH_NODE",
+        "CODEX_AMP_HOST_CONFIG",
+        "AMP_LLM_API_KEY",
+        "AMP_SEARCH_API_KEY",
+        "AMP_SEARCH_PASSWORD",
+        "AMP_SEARCH_BEARER",
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_BASE_URL",
+        "DEEPSEEK_MODEL",
+        "OPENAI_API_KEY"
       ]
     }
   }

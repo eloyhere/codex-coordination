@@ -3,21 +3,24 @@ Copyright 2026 Eloy Kim
 
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
-This product implements a subset of the Attention Manifest Protocol (AMP v0.1)
-as published by the `attention-manifest-protocol` npm package
-(https://github.com/eloyhere/attention-manifest-protocol), Copyright 2026
-Eloy Kim, licensed under the Apache License, Version 2.0.
+This product imports attention-manifest-protocol 0.6.3 from npm, Copyright
+2026 Eloy Kim, licensed under Apache-2.0. It bundles the published protocol,
+scanner, registry, search, runtime, governance, signing and domain implementations,
+together with all published JSON Schemas. AMP wire version is 0.1.
+Host bindings and authorization boundaries are described in docs/AMP-INTEGRATION.md.
 
-The protocol surface reused here is the Goal and Plan object model, AMP ids
-(`^[a-z][a-z0-9._:-]{0,63}$`), `amp: "0.1"`-tagged objects, the lifecycle edge
-tables, canonical JSON digests with `sha256:` prefixes, the append-only
-`{seq, kind, payload, prev, hash}` chain and the exported `ledger-snapshot`.
-`mcp/lib/amp.mjs` declares those primitives; `mcp/lib/store.mjs` builds and
-verifies the chain and the snapshot; `mcp/lib/goals.mjs` and `plans.mjs` produce
-the artifacts; `collaboration.mjs` records duties as an explicitly labelled host
-projection rather than an AMP object kind. `docs/PROTOCOL.md` records what was
-adopted, how it is verified against the reference implementation, and what is
-deliberately not implemented.
+At the user's request, this product includes a source snapshot of
+deepseek-coordination 0.23.2, Copyright 2026 Eloy Kim, under Apache-2.0.
+Its 24 agent tool implementations and eight skills are ported with separate
+Codex host adapters. Source hashes and boundaries are documented in
+docs/COORDINATION-TOOLS.md. Original notices and bundled dependency licenses are
+retained in assets/COORDINATION_THIRD_PARTY_LICENSES.md inside the plugin.
 
-The server has no third-party runtime dependencies: only Node.js built-in
-modules (`node:crypto`, `node:fs`, `node:path`, `node:readline`) are imported.
+The React interface uses periodicity-react 0.1.15 (Apache-2.0), React and React
+DOM (MIT), and the MCP Apps client SDK. Published schemas are validated with
+Ajv and ajv-formats (MIT). Build tools bundle dependencies for installation;
+the server runtime does not fetch code from npm.
+
+Bundled server license texts and upstream notices are retained in
+plugins/codex-coordination/assets/THIRD_PARTY_LICENSES.md. Bundled frontend
+license texts are in plugins/codex-coordination/app/THIRD_PARTY_LICENSES.md.

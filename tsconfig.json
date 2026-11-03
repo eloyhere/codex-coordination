@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": [
+      "ES2023"
+    ],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": "src/mcp",
+    "outDir": "plugins/codex-coordination/mcp",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmitOnError": true,
+    "types": [
+      "node"
+    ],
+    "resolveJsonModule": true,
+    "noEmit": true
+  },
+  "include": [
+    "src/mcp/**/*.mts"
+  ]
+}

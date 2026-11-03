@@ -1,0 +1,12 @@
+deepseek-coordination
+Copyright 2026 Eloy Kim
+
+This product uses the Attention Manifest Protocol (AMP v0.1) implementation
+published as the `attention-manifest-protocol` npm package, version 0.4.5,
+Copyright 2026 Eloy Kim, licensed under the Apache License, Version 2.0.
+
+The package provides the normative protocol operations used by this plugin.
+`src/protocol/` retains host-specific artifact builders and compatibility code;
+`src/host/amp.ts` and `src/host/amp-store.ts` adapt AMP to this plugin's lifecycle,
+Node key persistence, and SQLite ledger. `docs/amp-conformance.md` records the
+wired surfaces and deliberate gaps.

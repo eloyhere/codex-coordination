@@ -66,6 +66,13 @@ If the server refuses to read the file at all with `INVALID_STATE … version 1`
 
 ## 5. Report
 
+`coordination_protocol` action `list` reads recorded frames and receipts. Its
+`validate` action checks a supplied artifact against the installed npm AMP
+schemas; supplied snapshots also pass the upstream chain verifier. A recorded
+receipt is an assertion about an observed operation, not an automatically
+measured or authenticated result. `AMP_ARTIFACT` violations identify malformed
+frame/receipt payloads; never rewrite immutable history to make the audit pass.
+
 Report what the ledger says, in its own terms:
 
 - what is `achieved` and which checks you observed,

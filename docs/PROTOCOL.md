@@ -1,245 +1,79 @@
-# Protocol conformance
+# Protocol integration
 
-What this plugin implements of the Attention Manifest Protocol (AMP v0.1, reference
-implementation `attention-manifest-protocol` 0.5.0), which invariants are
-enforced and where, and what it deliberately does not claim.
+This plugin is a Codex host adapter for `attention-manifest-protocol@0.6.3`, installed from npm. AMP artifacts retain wire version `0.1`. [AMP integration and configuration](AMP-INTEGRATION.md) maps the native services, domain API, adapters, registries and host boundaries. This document also specifies compatibility with the original JSON coordination ledger.
 
-This document is written to be checkable. Every claim names a file and, where a
-rule is enforced at runtime, a test. A claim that cannot be traced to one is a
-bug in this document, not a feature.
+## Native host integration
 
-## 1. What "conformant" means here
+The source now exposes AMP's 60 canonical workspace, global, session, filesystem and global-filesystem tool definitions unchanged. Select an absolute repository using `coordination_workspace` before calling them. The host retains session credentials and stores scoped control state in `~/.codex/coordination/amp.sqlite` (override with `CODEX_AMP_DATABASE`). Specialized registries are exposed by `coordination_registry`; their native operations are replayed from a versioned SQLite journal. Executable callbacks bind installed templates, and parser registry edits activate the shared AMP parser instances.
 
-Conformance is claimed at the boundary, in three levels. Every artifact is in
-exactly one level, and the level is part of the contract.
+Search delegates to AMP `CatalogSearch`, `projectSearchRecords` and `applyControlRegistry`. Configure Elasticsearch with `CODEX_AMP_SEARCH_NODE` or `searchNode` in `~/.codex/coordination/host.json`; the default is `http://127.0.0.1:9200`. A host-configured local searchProcess can start an existing installation. Published AMP scanners provide symbols, import/call relations, nested projects, Markdown, Office and TeX projections within bounded authorized inputs.
 
-| Level | Meaning |
+`coordination_context` allocates explicitly requested frames, exposes pending contexts and archives settlements without claiming measured model token usage. This host lifecycle is distinct from the caller-supplied records accepted by `coordination_protocol` below.
+
+Protocol implementation binding, MCP/A2A/team/cooperation connections, cognitive/kernel/governed runtimes, telemetry, governance, signing/trust, delegation and domain services have dedicated adapters. There are 98 tools total. The generated inventory supports discovery; behavior tests and adapter bindings establish operational coverage. Host-only approvals, private keys, SQL and network authority remain behind the relevant adapters.
+
+## Runtime ownership
+
+| Responsibility | Implementation |
 | --- | --- |
-| **Wired** | Emitted on a real path (tool call) and returned or chained in the shape the published schema defines. |
-| **Host projection** | Derived from plugin state with a stated derivation; it is *not* an AMP artifact kind and never pretends to be one. |
-| **Not implemented** | The protocol defines it; this plugin does not claim it, with the reason in §7. |
+| Canonical JSON and digests | Imports from `attention-manifest-protocol/semantic` |
+| Safe JSON cloning | Imports from `attention-manifest-protocol/semantic/jsonValue.js` |
+| Goal lifecycle | Imports from `attention-manifest-protocol/goal`, with extra host gates for unfinished plans |
+| Plan preconditions | `validatePlanInput` from `attention-manifest-protocol/goal/plan.js`, plus bounded host validation |
+| Protocol types | `Goal`, `Plan`, `PlanTask`, `Ref`, `Budget`, `Criterion` from the published type surface |
+| Artifact schemas | All 16 published schema files / 28 root kinds, validated with Ajv 2020 and RFC 3339 formats |
+| Snapshot protocol verification | `verifySnapshot` from `attention-manifest-protocol/ledger` |
+| Host storage and diagnostics | TypeScript files in `src/mcp/lib/`; compiled and bundled into the plugin |
 
-The plugin does **not** claim to be a complete AMP implementation. It claims that
-every AMP object it *does* emit is byte-compatible with the reference and passes
-the same checks, and that everything it does not emit is listed in §7.
-`scripts/amp-conformance.mjs` measures the first half against the reference; it
-is not part of `npm run check`, because the plugin must run from a bare checkout.
+The lockfile pins npm integrity and dependency versions. There is no source checkout path or vendored protocol tree in the runtime. esbuild includes the imported npm implementations and schemas in the distributable; deployment needs Node 24+, not an installed node_modules directory. Retained `.mjs` files are generated output; edit `.mts` source and rebuild.
 
-## 2. Objects
+## Supported objects
 
-### 2.1 Goal — wired
-
-| Aspect | Implementation |
+| Object | Creation and persistence |
 | --- | --- |
-| Type | `mcp/lib/goals.mjs` `normaliseGoalArtifact` |
-| Shape | `{amp, kind:"goal", id, statement, success:[Criterion], value, priority, horizon?, deadline?}` |
-| Schema | `docs/schemas/plan.schema.json` (goal branch) of the reference |
-| Chain entry | `kind: "goal"`, payload = the artifact, appended once at creation |
-| Lifecycle | `goalView()` returns AMP's `GoalLifecycle` (`state`, `startedAt`, `achievedAt`) beside `createdAt`, `updatedAt`, `history` |
-| Test | `test/goals.test.mjs`, `test/amp.test.mjs` |
+| Goal | `coordination_goal`; strict AMP artifact, one `goal` entry at creation. Lifecycle/history live beside it; later transitions append host `event` payloads. |
+| Plan | `coordination_plan`; strict AMP artifact, a new `plan` entry on every mutation. Edges, initial status and creation time are host-derived. |
+| Frame | `coordination_protocol` action `record`; complete schema-valid caller-provided AMP artifact, immutable kind/id, appended as `frame`. Maximum nine attention slots; exclusions and revisit conditions remain explicit. |
+| Receipt | Same recording path, appended as `receipt`; operation, outcome, timestamp and usage shape follow the npm schema. |
+| Ledger snapshot | `coordination_check` action `snapshot`; derived from the append-only journal. `coordination_protocol` can validate a supplied snapshot with both schema and upstream hash verification. |
+| Handoff duty | Host projection, recorded as bounded `event` payloads. It is not an AMP artifact kind. |
 
-`success` requires at least one criterion and each criterion requires a non-empty
-`check`: a goal without one is a wish. Unknown fields are rejected rather than
-dropped, so a misspelled field cannot become durable protocol data.
+Frames and receipts supplied to the legacy recording tool are caller assertions. That recording path does not measure usage, authenticate declared identities or execute checks. Its outer chain hash binds the exact recorded data. The separate native context service allocates frames and binds session credentials; AMP-managed provider turns record measured usage through CognitiveRuntime. Codex's own internal model loop is outside those provider ports. Identities used in the original handoff workflow remain declared names.
 
-A transition changes no artifact field (AMP keeps lifecycle outside the goal), so
-it is recorded as an `event` entry (`{"type":"goal.transitioned","goal","from","to"}`)
-instead of rewriting the artifact.
+Goal/Plan writes must use their dedicated lifecycle tools. The generic protocol tool cannot bypass state transitions by appending replacement goals/plans. A second frame or receipt of the same kind/id conflicts; history is never overwritten.
 
-### 2.2 Plan — wired
+## Host rules
 
-| Aspect | Implementation |
-| --- | --- |
-| Type | `mcp/lib/plans.mjs` `normalisePlanArtifact` |
-| Shape | `{amp, kind:"plan", id, goal:Ref, process?:Ref, tasks:[PlanTask], edges:[[from,to]], commitment_window, budget, abandon_if:[Criterion], monitor?, rollback?, warrant?:Ref, status, created}` |
-| Schema | `docs/schemas/plan.schema.json` (plan branch) |
-| Chain entry | `kind: "plan"`, payload = the artifact, appended on every mutation |
-| Test | `test/plans.test.mjs` |
+- Goals carry at least one observable success criterion and an explicit check. States are `proposed → committed → active → achieved`, with abandonment edges; terminal states cannot reopen. Achievement additionally requires every linked plan to be settled.
+- Plans have at most twelve tasks. Dependencies must exist and be acyclic. `goal`, `abandon_if`, expected observations and checks are required. New plans are `draft`, then `committed`, `executing`, and `done` or `abandoned`.
+- Tasks may enter `running` or `done` only after all predecessors are `done`. Starting a task promotes a committed plan to executing. A plan can close only when every task is terminal.
+- Duties move through `assigned`, `accepted`, `started`, `submitted` and owner `verified`/`rejected`, with cancellation edges. Submission requires evidence; review requires the owner's recorded explanation. Only the declared side can advance each action.
+- The host rejects unknown fields and invalid canonical values rather than silently rewriting the caller's record. Protocol errors are translated into stable `CoordinationError` codes returned as MCP `isError` results.
 
-`goal` and `abandon_if` are required because AMP requires them. `edges` are
-derived from each task's `pre`, so a plan cannot describe two contradictory
-graphs; `status` starts at `draft` and `created` is stamped by the server. Those
-three fields are rejected as *input* — supplying them would invite a caller to
-declare a history it did not go through.
+## Ledger and compatibility
 
-A task carries `{id, intent, actor, ref?, pre, expect:{observation,check},
-irreversibility, budget?, status}`. `expect.check` is mandatory: a task whose
-result cannot be checked is not a task.
+The host document remains version **2**, at `<workspace>/.codex-coordination/ledger.json`. Existing version 2 ledgers remain readable and are not migrated or re-chained. Version 1 ledgers are refused because inventing a replacement chain would erase their original provenance.
 
-Every plan mutation (status or task) appends the **updated** artifact, because the
-artifact itself is what changed. Free-form notes are host metadata in the
-returned `history`; the artifact has no field for commentary.
+Each exported chain entry is exactly `{seq, kind, payload, prev, hash}`. The hash is AMP's digest of `{seq, kind, payload, prev}`. Sequence starts at zero; the first predecessor is `sha256:` plus 64 zeros. Host advisory timestamps are excluded from exported entries and hash input. Count and tip are checked against actual entries.
 
-### 2.3 Ledger — wired
+The legacy ledger emits `goal`, `plan`, `event`, `frame` and `receipt`. Native domain resources and `coordination_artifacts` separately support claims, hypotheses and the other published root kinds in the SQLite object store. Legacy host event payloads are coordination events; they are not claimed to satisfy the strict AMP Event branch of receipt.schema.json.
 
-| Aspect | Implementation |
-| --- | --- |
-| Chain | `hash = digestOf({seq, kind, payload, prev})`, genesis `sha256:` + 64 zeros |
-| Storage | `<workspace>/.codex-coordination/ledger.json`: a host document (`kind: "coordination-ledger"`) holding the projection and the chain |
-| Artifact | `snapshotOf()` returns `{amp, kind:"ledger-snapshot", agent, tip, count, entries}` |
-| Verification | `verifySnapshot()` recomputes every hash from its four covered fields, then compares `tip` and `count`; `verifyChain()` adds the document's own `tip`/`count` |
-| Emission | `coordination_check` with `action:"snapshot"`; `scripts/amp-snapshot.mjs` writes the same value to disk |
-| Test | `test/store.test.mjs`, `test/amp.test.mjs` |
+Writes are serialized per ledger inside one process and materialized with a temporary file and atomic rename. There is no cross-process lock. Use one writer per workspace. An audit reports tampering and structural errors; it never repairs a broken chain by rewriting it.
 
-Entry kinds written: `goal`, `plan` and `event`. The other five AMP kinds
-(`frame`, `receipt`, `claim`, `hypothesis`, `unknown`) are never written, because
-nothing in this host produces them.
+## React and Codex
 
-`seq` counts from zero and is contiguous. `at` is stored on each entry but is
-**not** covered by the hash — it is advisory host metadata, like AMP's
-`LogEntry.at` — and is stripped from the emitted snapshot, whose entry objects are
-exactly `{seq, kind, payload, prev, hash}`.
+`coordination_dashboard` is a read-only tool with an MCP Apps resource at `ui://codex-coordination/dashboard`. It accepts `{}` for the thread entrypoint and returns a workspace selector. With an absolute workspace, it returns the current status, audit, and up to fifty recent frame/receipt records.
 
-The host document is not an AMP artifact and does not claim to be. That is the
-same split the DSH plugin makes between its SQLite tables and the artifacts it
-emits.
+The server implements `resources/list` and `resources/read` with `text/html;profile=mcp-app`. The single-file React 19 interface uses `periodicity-react`, the official MCP Apps client bridge, host theme updates and safe-area insets. Refresh, export and validation invoke the same MCP handlers as chat. Explicit record actions append frames/receipts through their normal checks.
 
-## 3. State machines
+The development-only Vite API listens on loopback, checks a custom request header and origin, and restricts calls to read/validate tools. Production HTML communicates with its parent MCP host and contains no local HTTP API endpoint. Browser preview permits no writes.
 
-Every transition is table-driven, and the tables are exported so a test can
-assert them rather than duplicate them.
+## Host authority
 
-```
-goal:   proposed -> committed | abandoned
-        committed -> active | abandoned
-        active -> achieved | abandoned
-        achieved, abandoned -> (terminal)
+Native authorization is bound to the selected root and host-retained session credentials. Signing and key lifecycle use host-owned keys; executable registry callbacks bind installed implementations. Remote endpoints, model credentials and listener ports require private host configuration. Governing-agent calls cannot manufacture host approvals or private key material. Native replay restores local resources without repeating external model/network effects. Pending materialization contexts remain process-local until explicitly settled; persisted frames and settlements retain their native records.
 
-plan:   draft -> committed | abandoned
-        committed -> executing | abandoned
-        executing -> done | abandoned
-        done, abandoned -> (terminal)
+## Verification
 
-task:   pending -> running | done | skipped
-        running -> done | failed | skipped
-        failed -> running | skipped
-        done, skipped -> (terminal)
+`npm run check` builds and verifies the complete package: 85 unit tests, 330 stdio checks, isolated package checks, 9 conformance checks and 2 browser scenarios. It covers native registries, domain replay integrity, delegation fencing, governance budgets, signing/revocation, runtime metering, filesystem authorization and actual local protocol transports as well as the legacy lifecycle/ledger behavior. Stdio checks discover 98 tools. Conformance defaults to the installed npm package and can compare an explicit checkout with `--amp`.
 
-duty:   assigned -> accepted | cancelled
-        accepted -> started | cancelled
-        started -> submitted | cancelled
-        submitted -> verified | rejected | cancelled
-        rejected -> accepted | cancelled
-        verified, cancelled -> (terminal)
-```
-
-Additional gates, each enforced at the mutation site:
-
-- `goal.achieved` requires every linked plan to be `done` or `abandoned`.
-- A task may enter `running` or `done` only when every predecessor is `done`.
-- A task cannot move while its plan is a `draft`; starting the first task of a
-  `committed` plan promotes the plan to `executing` in the same transaction.
-- `plan.done` requires every task to be `done`, `failed` or `skipped`.
-- `duty.submit` requires a non-empty `summary` and 1–32 `evidence` entries.
-- `duty.verify` requires the submitted evidence and a non-empty owner `review`.
-- `duty` moves are split by side: `accept`/`start`/`submit` belong to the
-  assignee, `verify`/`reject`/`cancel` to the owner. A declared `actor` that does
-  not match is `PERMISSION`.
-
-## 4. Duty and handoff — host projection
-
-A duty is stored as `{id, role, owner, assignee, responsibilities, acceptance,
-reference?, status, summary, evidence, review, createdAt, updatedAt, history}`.
-It carries no `amp` and no `kind`: AMP has no `duty` object, and emitting one
-would be an invented kind rather than a conformance.
-
-Why not `responsibility-assignment`: that object requires `authority`, `budget`,
-`window` (`from`/`to`) and `version`, and a Codex session has no org directory, no
-lease and no wall-clock window to declare. A half-filled assignment would be a
-more confident lie than a truthful projection.
-
-Duty mutations append `event` entries: `duty.assigned` carries the recorded terms
-(role, owner, assignee, responsibilities, acceptance, reference) and
-`duty.transitioned` carries the move, the actor, and — on submit/verify/reject —
-the recorded summary, evidence and review. The trail therefore survives a
-hand-edited projection.
-
-Test: `test/collaboration.test.mjs`.
-
-## 5. Input validation
-
-The tool inputs are not the artifacts, so they are validated before an artifact
-exists:
-
-- `requireExactKeys` rejects both missing required fields and unknown fields,
-  naming the field. `additionalProperties: false` is a rule here, not a note.
-- AMP spellings are the only spellings. `commitmentWindow` / `abandonIf` are
-  rejected with the field to use instead; guessing which one won would make the
-  record depend on the caller's habit.
-- `edges`, `status` and `created` on a plan are computed by the server and
-  rejected as input.
-- Strings containing an unpaired UTF-16 surrogate are rejected, and `-0` is
-  rejected as a number: RFC 8785 cannot encode the first and rewrites the second,
-  so a digest over them would not bind the value the caller passed.
-- Ids, digests, timestamps, budgets and references each have one validator in
-  `mcp/lib/amp.mjs`, shared by every object.
-
-## 6. Identity model
-
-`owner`, `assignee` and `actor` are **declared** strings. The server compares
-them to keep a caller from casually advancing someone else's duty, but it cannot
-authenticate the caller: it runs as the user, inside one Codex session, and MCP
-carries no identity. Recorded identity is evidence of intent, not proof of
-authorship. Do not build a security boundary on it.
-
-## 7. Deliberately not implemented
-
-Each row is a gap with a reason, not an accident.
-
-| Protocol surface | Why not |
-| --- | --- |
-| `manifest` and `signature` | no host/org countersigner, and no key material this plugin should mint on the user's behalf; a self-signed manifest would imply an identity claim nothing verifies |
-| `frame` / `attention-request` / `interrupt` | a Codex MCP server sees one tool call at a time and no turn boundary; there is no attention allocation it could observe, so a frame would be invented |
-| `receipt` / `usage` | the host owns token and time accounting; the plugin measures nothing, so it records nothing |
-| `claim` / `hypothesis` / `unknown` / warrant tiers | no comprehension or evidence pipeline exists in this host; emitting a claim at a chosen tier would be a position dressed as a warrant |
-| `responsibility-assignment` / `interaction-binding` / `delegation` / `lease` / `result-contract` | see §4: the required authority, budget, window and signature fields cannot be supplied honestly here |
-| `checkpoint` and chain truncation | truncating the chain would make it unverifiable from genesis, and AMP's answer — a signed checkpoint — needs the key material this host does not have. The chain is therefore kept whole. |
-| `process` objects | no process authoring surface exists. `plan.process` is accepted as a `Ref` but nothing here creates the process. |
-| `attention` budgets beyond the declared `plan.budget` | nothing in this host enforces a token, call, interrupt or money budget; the field records the caller's declaration, not a measurement |
-| MCP tool execution, sandbox policy | Codex owns tools and permissions; the server registers read-only tool definitions and never executes a check |
-| automatic goal ranking | `plan`/`goal` `priority` is the caller's integer; no inference-based ranking exists |
-| process/Elasticsearch/federation/discover | no peer, no index, no network in this plugin |
-
-## 8. Verifying
-
-```bash
-node scripts/validate.mjs        # manifests, skill frontmatter, tool references, version agreement
-node --test "test/*.test.mjs"    # 47 unit tests, including pinned reference digests
-node scripts/mcp-smoke.mjs       # real stdio handshake, five tools, snapshot export, tamper refusal
-node scripts/amp-conformance.mjs --amp <attention-manifest-protocol checkout>
-node scripts/amp-snapshot.mjs <workspace>
-```
-
-`npm run check` runs the first three. `npm run conformance` runs the fourth when
-the reference checkout is available.
-
-The conformance script drives a goal, a plan and a full handoff through the real
-write path, then checks:
-
-1. `canonicalJson` and `digestOf` are byte-identical to the reference's own
-   functions for a set of vectors;
-2. every emitted Goal and Plan artifact validates against
-   `docs/schemas/plan.schema.json`;
-3. the emitted `ledger-snapshot` validates against
-   `docs/schemas/ledger-snapshot.schema.json`;
-4. the reference's `verifySnapshot` accepts the snapshot, and so does this
-   plugin's;
-5. every entry is exactly `{seq, kind, payload, prev, hash}` with a contiguous
-   `seq` from zero and an AMP digest.
-
-## 9. Upgrading from 0.1
-
-The 0.1 ledger format stored `{seq, at, type, id, data, prev, digest}` entries
-and unprefixed hex digests. It is **not** migrated: re-chaining those entries
-would compute new hashes over old evidence and destroy the only property the chain
-has. A 0.1 file is refused with `INVALID_STATE` naming the version; delete it to
-start a new ledger, or keep it as an archive.
-
-## 10. Compatibility
-
-- AMP wire tag `0.1`; reference implementation `attention-manifest-protocol`
-  0.5.0 (Apache-2.0).
-- MCP protocol revisions accepted: `2025-06-18`, `2025-03-26`, `2024-11-05`; the
-  client's requested revision is echoed when supported.
-- Transport: stdio, one JSON object per line, JSON-RPC 2.0. Batching is accepted.
-- Runtime: Node.js 20+; no package installation, no network access.
+Playwright checks real ledger data, filtering, validation, snapshot export, invalid inputs and layout at 1440, 768 and 375 pixels. A second test loads the **production HTML in an iframe**, performs the MCP Apps handshake with a test host, routes calls to real handlers, records a receipt, selects a workspace, edits a native registry and discovers domain modules. This is a host simulation, not a claim that an already-running Codex process has reloaded its tool set. Real Elasticsearch checks run separately via `node scripts/amp-search-smoke.mjs`.

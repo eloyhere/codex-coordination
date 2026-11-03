@@ -1,0 +1,73 @@
+/** Codex ports for the coordination agent tools. */
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, join, relative, resolve, sep } from 'node:path'
+import { spawn } from 'node:child_process'
+import { createCoordination } from './runtime.mjs'
+import { file } from '../amp/runtime.mjs'
+import { processEnvironment } from '../amp/config.mjs'
+import { requestHostApproval } from '../amp/host-client.mjs'
+import { ERROR_CODES, fail } from '../lib/amp.mjs'
+import type { SessionDescriptor } from 'attention-manifest-protocol/session'
+import { digestOf } from 'attention-manifest-protocol/semantic'
+
+export class HostCoordination {
+  private runtime: ReturnType<typeof createCoordination>
+  private temporary?: string
+  constructor(private readonly options: { workspace: string; sessionId: string; databasePath: string; descriptor: SessionDescriptor; call(name: string, args: Record<string, unknown>): Promise<Record<string, any>>; revision(): string }) {
+    const sandbox = new file.PathSandbox(options.descriptor.roots)
+    let databasePath = options.databasePath
+    if (databasePath === ':memory:') { this.temporary = mkdtempSync(join(tmpdir(), 'codex-coordination-')); databasePath = join(this.temporary, 'state.sqlite') }
+    this.runtime = createCoordination({ workspace: options.workspace, databasePath, session: options.sessionId,
+      authorize: (absolute: string) => { sandbox.resolve(relative(options.workspace, absolute).split(sep).join('/') || '.', 'read'); return true },
+      runtime: { sandboxPolicy: { defaultMode: 'workspace', overrideOf: () => undefined, resolve: () => ({ mode: 'workspace', workspaceRoot: options.workspace }) } },
+      approve: (request: Record<string, unknown>) => requestHostApproval('coordination', 'coordination_approve', request),
+      shell: { resolve: (request: any) => request, execute: async (request: any) => ({ result: () => this.execute(request) }) },
+      search: { env: { COORDINATION_ES_URL: 'http://127.0.0.1', COORDINATION_ES_INDEX: 'workspace' }, run: async (query: any) => {
+        if (query.index && query.index !== 'workspace') return { ok: false, error: { code: 'PERMISSION', message: 'Codex search is restricted to the selected AMP workspace metadata index' } }
+        if (query.from > 0) return { ok: false, error: { code: 'INVALID_ARGUMENT', message: 'Use a more specific query; the AMP discovery port does not provide Elasticsearch offset pagination' } }
+        if (query.fields?.some((field: string) => field.includes('.'))) return { ok: false, error: { code: 'INVALID_ARGUMENT', message: 'fields must select top-level AMP metadata keys' } }
+        const result = await options.call('amp_tool_workspace_discover', { revision: options.revision(), queries: query.query, limit: Math.min(20, query.size), maxDepth: 1, nodeLimit: 8 })
+        if (!result.ok) return result
+        const trees = result.data.trees ?? []
+        const patterns = query.fields?.map((field: string) => new RegExp('^' + field.split('*').map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$'))
+        return { ok: true, index: 'workspace', total: trees[0]?.total ?? 0, took: trees[0]?.took ?? 0, hits: trees.map((item: any) => ({ id: item.tree.id, score: item.tree.score, source: patterns?.length ? Object.fromEntries(Object.entries(item.tree).filter(([key]) => patterns.some((pattern: RegExp) => pattern.test(key)))) : item.tree, truncated: item.truncated })) }
+      } },
+    })
+  }
+  async call(name: string, args: Record<string, unknown>) {
+    if (args.session !== undefined && args.session !== this.options.sessionId) fail(ERROR_CODES.PERMISSION, 'Use the bound plugin session; another session ID does not grant authority')
+    let value: any
+    try { value = await this.runtime.call(name, args, this.options.sessionId) }
+    catch (error) {
+      const source = error as { code?: string; message?: string; details?: unknown }
+      if (source.code && Object.values(ERROR_CODES).includes(source.code as any)) fail(source.code, source.message ?? source.code, { source: source.details })
+      throw error
+    }
+    if (name === 'coordination_notification') return { ...value, notifications: this.runtime.drain(this.options.sessionId), delivery: 'MCP App renders the requested surface when supported by the host; actions dismiss only, no answer or approval is returned' }
+    return value && typeof value === 'object' ? { ...value, ok: typeof value.ok === 'boolean' ? value.ok : !value.error } : { ok: true, value }
+  }
+  knowledge() {
+    return this.runtime.knowledge().map(entry => ({ id: `copied.knowledge.${digestOf(entry.path).slice(7, 31)}`, title: entry.title || entry.path, summary: entry.note || `Knowledge file ${entry.path}`, content: '', sourceUri: entry.path, tags: entry.tags, updatedAt: new Date(entry.updated).toISOString() }))
+  }
+  private async execute(request: any): Promise<Record<string, unknown>> {
+    if (resolve(request.workdir) !== resolve(this.options.workspace)) fail(ERROR_CODES.PERMISSION, 'Shell working directory must be the selected workspace')
+    if (!await requestHostApproval('coordination', 'coordination_workspace', { command: request.command, workdir: request.workdir })) fail(ERROR_CODES.PERMISSION, 'The MCP host did not approve this exact command')
+    const timeoutMs = Math.min(90_000, Math.max(1, request.timeoutMs ?? 90_000))
+    return new Promise((done, reject) => {
+      const child = spawn(request.command, { shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh', cwd: request.workdir, env: processEnvironment(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      const cap = 256 * 1024
+      const streams = { stdout: [] as Buffer[], stderr: [] as Buffer[] }
+      const sizes = { stdout: 0, stderr: 0 }
+      for (const name of ['stdout', 'stderr'] as const) child[name].on('data', (chunk: Buffer) => { const kept = Math.max(0, cap - sizes[name]); if (kept) streams[name].push(chunk.subarray(0, kept)); sizes[name] += chunk.length })
+      let timedOut = false
+      const timer = setTimeout(() => { timedOut = true; if (process.platform === 'win32' && child.pid) spawn('taskkill.exe', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' }).unref(); else child.kill('SIGKILL') }, timeoutMs)
+      child.once('error', error => { clearTimeout(timer); reject(error) })
+      child.once('close', exitCode => { clearTimeout(timer); done({ exitCode, timedOut, aborted: false, timeoutMs, stdout: { text: Buffer.concat(streams.stdout).toString('utf8'), truncated: sizes.stdout > cap }, stderr: { text: Buffer.concat(streams.stderr).toString('utf8'), truncated: sizes.stderr > cap } }) })
+    })
+  }
+  async close() {
+    await this.runtime.close()
+    if (this.temporary && resolve(this.temporary).startsWith(resolve(tmpdir()) + sep) && basename(this.temporary).startsWith('codex-coordination-')) rmSync(this.temporary, { recursive: true, force: true })
+  }
+}

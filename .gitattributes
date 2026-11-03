@@ -6,3 +6,13 @@
 *.bat text eol=crlf
 *.svg text
 *.json text
+
+# TypeScript/React sources live under src; these files are reproducible builds.
+plugins/codex-coordination/mcp/** linguist-generated=true -whitespace
+plugins/codex-coordination/app/** linguist-generated=true -whitespace
+
+# Preserve byte-exact upstream snapshots and their recorded SHA-256 hashes.
+vendor/coordination-runtime/** -text -whitespace
+
+# Bundled third-party license text is retained verbatim.
+plugins/codex-coordination/assets/*LICENSES.md -whitespace

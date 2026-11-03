@@ -1,0 +1,45 @@
+import { hook, database as databaseApi, context } from './runtime.mjs'
+import type { FilesystemSession } from 'attention-manifest-protocol/file'
+import type { Database } from 'attention-manifest-protocol/database'
+import type { Hook } from 'attention-manifest-protocol/hook'
+import type { DomainApi } from './api.mjs'
+import { ERROR_CODES, fail } from '../lib/amp.mjs'
+import { HostFilePorts, FileOperations } from './file-ports.mjs'
+const names = ['useRead', 'useWrite', 'useDiff', 'useOutline', 'useImportation', 'useExportation', 'useDependency', 'useAst', 'useCode', 'useProject'] as const
+const parsers = ['useDependencyParse', 'useExportationParse', 'useImportationParse', 'useOutlineParse', 'useAstParse', 'useCodeParse', 'useProjectParse'] as const
+export class HostHooks {
+  private hooks = new Map<string, Hook<any, any>>()
+  private recorder: InstanceType<typeof databaseApi.SqliteHookRecorder>
+  private files: HostFilePorts
+  constructor(private readonly session: FilesystemSession, private readonly database: Database, private readonly api: DomainApi) {
+    this.recorder = new databaseApi.SqliteHookRecorder(database.db)
+    this.files = new HostFilePorts(session, database)
+  }
+  async call(args: Record<string, any>) {
+    if (args.action === 'describe') return { ok: true, hooks: names, parsers, fileOperations: FileOperations }
+    if (args.action === 'file_operation') return { ok: true, hostScope: { session: this.session.sessionId, roots: this.session.descriptor.roots.map(root => ({ id: root.id, excluded: root.exclude })) }, result: this.api.wire(await this.files.call(args)) }
+    if (args.action === 'context_package') {
+      if (!Array.isArray(args.items) || args.items.length > 256) fail(ERROR_CODES.INVALID_ARGUMENT, 'Context package items must be an array of at most 256 native builder operations')
+      const builder = new context.ContextBuilder({ ...this.api.resolve(args.options ?? {}), session: this.session, budgetTokens: args.budgetTokens })
+      const methods = ['addFile', 'addDirectory', 'addOutline', 'addImports', 'addExports', 'addDependency', 'addNote']
+      for (const item of args.items) {
+        if (!methods.includes(item.method) || !Array.isArray(item.arguments)) fail(ERROR_CODES.INVALID_ARGUMENT, 'Unknown native ContextBuilder operation')
+        Reflect.apply((builder as any)[item.method], builder, this.api.resolve(item.arguments))
+      }
+      return { ok: true, result: this.api.wire(builder.build()) }
+    }
+    if (args.action === 'history') return { ok: true, runs: this.database.hookRuns.list(this.session.sessionId, Math.min(100, Math.max(1, args.limit ?? 20))) }
+    if (args.action === 'parse') {
+      if (!parsers.includes(args.name)) fail(ERROR_CODES.INVALID_ARGUMENT, 'Unknown published AMP parse hook')
+      const parser = (hook as any)[args.name](this.session)
+      return { ok: true, result: this.api.wire(await Reflect.apply(parser, undefined, this.api.resolve(args.arguments ?? []))) }
+    }
+    if (!names.includes(args.name)) fail(ERROR_CODES.INVALID_ARGUMENT, 'Unknown published AMP hook')
+    let instance = this.hooks.get(args.name)
+    if (!instance) { instance = (hook as any)[args.name](this.session, { recorder: this.recorder }); this.hooks.set(args.name, instance!) }
+    if (args.action === 'reset') instance!.reset()
+    else if (args.action === 'run') await instance!.run(this.api.resolve(args.request))
+    else if (args.action !== 'state') fail(ERROR_CODES.INVALID_ARGUMENT, 'Unknown hook action')
+    return { ok: instance!.state.status !== 'error', state: this.api.wire(instance!.state) }
+  }
+}

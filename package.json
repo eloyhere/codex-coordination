@@ -1,8 +1,7 @@
 {
   "name": "codex-coordination",
-  "version": "0.2.0",
-  "private": true,
-  "description": "A Codex plugin that keeps a durable AMP coordination ledger beside a repository: strict AMP Goal and Plan artifacts, accountable handoffs and an append-only ledger-snapshot chain, exposed as five MCP tools and four skills.",
+  "version": "0.5.1",
+  "description": "A TypeScript Codex plugin with a React / Periodicity dashboard and npm AMP integration for durable goals, plans, handoffs, attention frames and receipts.",
   "keywords": [
     "codex",
     "codex-plugin",
@@ -27,16 +26,26 @@
   "homepage": "https://github.com/eloyhere/codex-coordination#readme",
   "type": "module",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0"
   },
   "scripts": {
     "validate": "node scripts/validate.mjs",
     "smoke": "node scripts/mcp-smoke.mjs",
     "test": "node --test \"test/*.test.mjs\"",
-    "check": "npm run validate && npm test && npm run smoke",
+    "check": "npm run build && npm run validate && npm test && npm run smoke && npm run smoke:package && npm run conformance && npm run test:ui",
     "conformance": "node scripts/amp-conformance.mjs",
     "snapshot": "node scripts/amp-snapshot.mjs",
-    "serve": "node plugins/codex-coordination/mcp/server.mjs"
+    "serve": "node plugins/codex-coordination/mcp/server.mjs",
+    "build:server": "node scripts/build.mjs --amp-runtime && node scripts/build-coordination.mjs && node scripts/build.mjs",
+    "build:app": "vite build",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.app.json",
+    "build": "npm run typecheck && npm run build:server && npm run build:app",
+    "dev": "npm run build:server && vite",
+    "prepack": "npm run build",
+    "test:ui": "playwright test",
+    "smoke:package": "node scripts/package-smoke.mjs",
+    "smoke:search": "node scripts/amp-search-smoke.mjs",
+    "inventory:amp": "node scripts/inventory-amp.mjs"
   },
   "files": [
     ".agents/plugins/marketplace.json",
@@ -48,6 +57,41 @@
     "README.zh-CN.md",
     "CHANGELOG.md",
     "LICENSE",
-    "NOTICE"
-  ]
+    "NOTICE",
+    "src/**",
+    "vendor/coordination-runtime/**",
+    "tsconfig*.json",
+    "vite.config.ts",
+    "playwright.config.ts"
+  ],
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/schemastery": "3.18.5",
+    "@modelcontextprotocol/ext-apps": "2.0.4",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "attention-manifest-protocol": "0.6.3",
+    "mammoth": "1.13.0",
+    "periodicity-react": "0.1.15",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.2.1",
+    "esbuild": "0.28.2",
+    "typescript": "6.0.3",
+    "vite": "8.3.5",
+    "vite-plugin-singlefile": "2.3.4"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "bin": {
+    "codex-coordination": "plugins/codex-coordination/mcp/server.mjs"
+  }
 }

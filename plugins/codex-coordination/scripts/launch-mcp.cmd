@@ -35,7 +35,7 @@ if not defined NODE_EXE if exist "%ProgramFiles%\nodejs\node.exe" set "NODE_EXE=
 if not defined NODE_EXE if exist "%ProgramW6432%\nodejs\node.exe" set "NODE_EXE=%ProgramW6432%\nodejs\node.exe"
 
 if defined NODE_EXE goto run
-echo codex-coordination: node.exe not found. Install Node.js 20+ or set NODE_EXE. 1>&2
+echo codex-coordination: node.exe not found. Install Node.js 24+ or set NODE_EXE. 1>&2
 exit /b 1
 
 :run

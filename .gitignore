@@ -14,3 +14,5 @@ Thumbs.db
 # Scratch
 .tmp/
 *.log
+playwright-report/
+*.tgz

@@ -13,15 +13,18 @@
  */
 
 import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { readState, verifyChain, verifySnapshot } from '../plugins/codex-coordination/mcp/lib/store.mjs'
+import { AMP_DEFINITIONS } from '../plugins/codex-coordination/mcp/amp/host.mjs'
+import { COORDINATION_CATALOG } from '../plugins/codex-coordination/mcp/coordination/tools.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const SERVER = join(ROOT, 'plugins', 'codex-coordination', 'mcp', 'server.mjs')
+const serverOption = process.argv.indexOf('--server')
+const SERVER = serverOption === -1 ? join(ROOT, 'plugins', 'codex-coordination', 'mcp', 'server.mjs') : resolve(process.argv[serverOption + 1])
 const VERBOSE = process.argv.includes('--verbose')
 
 /** @type {string[]} */
@@ -172,7 +175,8 @@ function call(wire, name, args) {
 
 async function main() {
   const workspace = mkdtempSync(join(tmpdir(), 'codex-coordination-smoke-'))
-  const child = spawn(process.execPath, [SERVER], { stdio: ['pipe', 'pipe', 'pipe'], cwd: ROOT })
+  writeFileSync(join(workspace, 'probe.ampx'), 'focus attention')
+  const child = spawn(process.execPath, [SERVER], { stdio: ['pipe', 'pipe', 'pipe'], cwd: ROOT, env: { ...process.env, CODEX_AMP_DATABASE: join(workspace, '.codex-coordination', 'amp.sqlite') } })
   const wire = new Wire(child)
   try {
     const initialize = await wire.request('initialize', {
@@ -182,7 +186,7 @@ async function main() {
     })
     assertEqual(initialize.result?.protocolVersion, '2025-06-18', 'initialize echoes a supported protocol version')
     assertEqual(initialize.result?.serverInfo?.name, 'codex-coordination', 'initialize advertises the server name')
-    assertEqual(initialize.result?.serverInfo?.version, '0.2.0', 'initialize advertises the AMP-aware version')
+    assertEqual(initialize.result?.serverInfo?.version, '0.5.1', 'initialize advertises the AMP-aware version')
     assertEqual(initialize.result?.capabilities?.tools !== undefined, true, 'initialize advertises the tools capability')
     assert(typeof initialize.result?.instructions === 'string' && initialize.result.instructions.includes('workspace'), 'initialize explains the workspace requirement')
     wire.notify('notifications/initialized')
@@ -192,19 +196,89 @@ async function main() {
 
     const list = await wire.request('tools/list')
     const tools = list.result?.tools ?? []
-    assertEqual(tools.length, 5, 'five tools are registered')
-    assertEqual(tools.map((tool) => tool.name).sort(), [
+    assertEqual(tools.length, 98, 'coordination and canonical AMP tools are registered')
+    assertEqual(tools.map((tool) => tool.name).sort(), [...new Set([
       'coordination_check',
+      'coordination_dashboard',
       'coordination_goal',
       'coordination_handoff',
       'coordination_plan',
+      'coordination_protocol',
       'coordination_status',
-    ], 'tool names are the documented five')
+      'coordination_workspace',
+      'coordination_registry',
+      'coordination_context',
+      'coordination_amp',
+      'coordination_artifacts',
+      'coordination_keys',
+      'coordination_connections',
+      'coordination_hooks',
+      'coordination_runtime',
+      ...AMP_DEFINITIONS.map(tool => tool.name),
+      ...COORDINATION_CATALOG.map(tool => tool.name), 'coordination_project',
+    ])].sort(), 'all documented tool names are exposed')
     for (const tool of tools) {
-      assert(typeof tool.description === 'string' && tool.description.length > 40, `${tool.name} has a substantive description`)
-      assertEqual(tool.inputSchema?.required?.includes('workspace'), true, `${tool.name} requires workspace`)
+      assert(typeof tool.description === 'string' && tool.description.length > 0, `${tool.name} has a description`)
+      if (['coordination_check', 'coordination_handoff', 'coordination_protocol', 'coordination_status'].includes(tool.name)) assertEqual(tool.inputSchema?.required?.includes('workspace'), true, `${tool.name} requires workspace`)
       assertEqual(tool.inputSchema?.type, 'object', `${tool.name} declares an object schema`)
+      const original = AMP_DEFINITIONS.find(definition => definition.name === tool.name)
+      if (original) assertEqual(tool.inputSchema, original.inputSchema, `${tool.name} preserves the upstream schema`)
     }
+
+    const dashboardTool = tools.find(tool => tool.name === 'coordination_dashboard')
+    assertEqual(dashboardTool?._meta?.ui?.resourceUri, 'ui://codex-coordination/dashboard', 'dashboard links to its MCP App')
+    const resourceList = await wire.request('resources/list')
+    assertEqual(resourceList.result?.resources?.length, 1, 'the UI resource is discoverable')
+    const resource = await wire.request('resources/read', { uri: 'ui://codex-coordination/dashboard' })
+    assertEqual(resource.result?.contents?.[0]?.mimeType, 'text/html;profile=mcp-app', 'dashboard uses the MCP Apps MIME type')
+    assert(resource.result?.contents?.[0]?.text?.includes('<div id="root">'), 'dashboard resource includes the React root')
+    const unknownResource = await wire.request('resources/read', { uri: 'ui://unknown' })
+    assertEqual(unknownResource.error?.code, -32002, 'unknown UI resources are refused')
+    const emptyDashboard = await call(wire, 'coordination_dashboard', {})
+    assertEqual(emptyDashboard.value?.workspace, null, 'thread entrypoint accepts empty arguments')
+    const protocolWorkspace = join(workspace, 'protocol-probe')
+    mkdirSync(protocolWorkspace)
+    const protocol = await call(wire, 'coordination_protocol', { workspace: protocolWorkspace, action: 'describe' })
+    assertEqual(protocol.value?.protocol?.version, '0.6.3', 'protocol reports the npm package version')
+    const selected = await call(wire, 'coordination_workspace', { workspace })
+    assertEqual(selected.isError, false, 'a real host workspace/session is selected')
+    assertEqual('token' in selected.value, false, 'host session credentials stay off the wire')
+    const nativeCapabilities = await call(wire, 'amp_tool_workspace_capabilities', {})
+    assertEqual(nativeCapabilities.value?.ok, true, 'the canonical workspace service is operational')
+    const exact = await call(wire, 'coordination_context', { action: 'search', query: 'coordination_project' })
+    assertEqual(exact.value?.hits?.[0]?.id, 'coordination_project', 'exact tool lookup finds the named agent entrypoint')
+    const missionList = await call(wire, 'coordination_mission', { action: 'list' })
+    assertEqual(missionList.isError, false, 'copied mission tool runs through MCP')
+    const copiedGoalList = await call(wire, 'coordination_goal', { action: 'list' })
+    assertEqual(copiedGoalList.isError, false, 'goal tool accepts the copied workspace-bound interface')
+    const copiedRead = await call(wire, 'coordination_read', { path: 'probe.ampx', mode: 'lines', start: 1, maxLines: 1 })
+    assertEqual(copiedRead.value?.content, 'focus attention', 'copied reader returns actual file content')
+    const copiedKnowledge = await call(wire, 'coordination_knowledge', { action: 'list' })
+    assertEqual(copiedKnowledge.isError, false, 'knowledge tool is operational')
+    const tree = await call(wire, 'amp_tool_workspace_tree', { revision: nativeCapabilities.value.revision, parentId: 'project:.' })
+    const target = tree.value.data.items.find(item => item.label === 'probe.ampx')
+    const quick = await call(wire, 'coordination_context', { action: 'read', targets: [target.id], maxLines: 1, budgetTokens: 2000 })
+    assertEqual(quick.value?.ok, true, 'quick reader performs the native lifecycle')
+    assertEqual(quick.value?.archive?.settled, true, 'quick reader archives its context')
+    const pending = await call(wire, 'coordination_context', { action: 'pending' })
+    assertEqual(pending.value?.pending?.length, 0, 'quick reader leaves no pending context')
+    const expanded = await call(wire, 'coordination_context', { action: 'detail', id: quick.value.archive.id })
+    assertEqual(expanded.value?.result?.reads?.[0]?.data?.text, 'focus attention', 'full native result can be expanded by archive reference')
+    const language = await call(wire, 'coordination_registry', { registry: 'languages', action: 'register', id: 'custom', value: { family: 'code', extensions: ['ampx'], keywords: ['focus'] }, expectedVersion: 0 })
+    assertEqual(language.value?.version, 1, 'native registry edits have a durable version')
+    const syntax = await call(wire, 'amp_tool_filesystem_ast', { path: 'probe.ampx' })
+    assertEqual(syntax.value?.data?.language, 'custom', 'registry edits affect the actual filesystem parser')
+    const computed = await call(wire, 'coordination_amp', { action: 'call', module: 'semantic', name: 'sha256Hex', arguments: ['probe'] })
+    assertEqual(/^[0-9a-f]{64}$/.test(computed.value?.result), true, 'the published algorithm runs through the real MCP gateway')
+    const structured = await call(wire, 'coordination_amp', { action: 'call', module: 'semantic', name: 'canonicalJson', arguments: [{ count: 42, enabled: true, tags: ['x', 3] }] })
+    assertEqual(structured.isError, false, 'the gateway accepts structured positional JSON arguments')
+    assertEqual(structured.value?.result, JSON.stringify({ count: 42, enabled: true, tags: ['x', 3] }), 'native canonical JSON retains numeric, boolean and nested array values')
+    const invalidNativeArgs = await call(wire, 'amp_tool_filesystem_read', { path: 'probe.ampx', sessionId: 'forged' })
+    assertEqual(invalidNativeArgs.isError, true, 'tool schemas reject forged credentials before dispatch')
+    const receipt = await call(wire, 'coordination_protocol', { workspace: protocolWorkspace, action: 'record', artifact: { amp: '0.1', kind: 'receipt', id: 'wire-read', op: 'read', at: '2026-11-03T00:00:00Z', usage: {}, outcome: 'success' } })
+    assertEqual(receipt.isError, false, 'an AMP receipt is recorded through the real wire')
+    const dashboard = await call(wire, 'coordination_dashboard', { workspace: protocolWorkspace })
+    assertEqual(dashboard.value?.records?.[0]?.payload?.id, 'wire-read', 'dashboard reads the recorded receipt')
 
     const status = await call(wire, 'coordination_status', { workspace })
     assertEqual(status.isError, false, 'status call succeeds')
