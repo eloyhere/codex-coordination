@@ -3,6 +3,10 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog; the project adheres to Semantic Versioning.
 
+## [0.5.2] — 2026-11-03
+
+- Add npm funding metadata and the GitHub Sponsors configuration for eloyhere. This is an npm metadata release; the bundled Codex plugin remains 0.5.1 with unchanged runtime behavior.
+
 ## [0.5.1] — 2026-11-03
 
 - Render coordination_notification with Periodicity Snackbar, Popover, Dialog and Alert, including anchors, severity, multiline messages, durations and dismiss-only actions.

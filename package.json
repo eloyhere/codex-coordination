@@ -1,6 +1,6 @@
 {
   "name": "codex-coordination",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "A TypeScript Codex plugin with a React / Periodicity dashboard and npm AMP integration for durable goals, plans, handoffs, attention frames and receipts.",
   "keywords": [
     "codex",
@@ -93,5 +93,9 @@
   },
   "bin": {
     "codex-coordination": "plugins/codex-coordination/mcp/server.mjs"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/eloyhere"
   }
 }
