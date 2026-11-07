@@ -42,6 +42,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { ensureCacheIgnored } from './cache-ignore.mjs'
 
 import {
   AMP_VERSION,
@@ -211,6 +212,7 @@ export function writeState(workspace: string, state: Record<string, any>) {
   const directory = dirname(path)
   try {
     mkdirSync(directory, { recursive: true })
+    ensureCacheIgnored(workspace)
   } catch (error) {
     throw new CoordinationError(ERROR_CODES.IO, `cannot create ${directory}: ${String((error instanceof Error ? error.message : String(error)) ?? error)}`, { directory })
   }

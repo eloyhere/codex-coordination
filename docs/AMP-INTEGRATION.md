@@ -53,7 +53,7 @@ JSON 承载 BigInt、bytes、Map、Set、Date 与资源句柄，分别使用 `$b
 ## 数据位置与生命周期
 
 - 原有协调台账：`<workspace>/.codex-coordination/ledger.json`，version 2 不迁移、不重新链化。
-- 原生控制/搜索/对象状态：`~/.codex/coordination/amp.sqlite`，可用 `CODEX_AMP_DATABASE` 指定绝对路径。
+- 当前项目的旧版控制/搜索/对象状态：`.codex-coordination/amp-legacy/control.sqlite`。原 `~/.codex/coordination/amp.sqlite`（或 `CODEX_AMP_DATABASE` 指定路径）仅作为只读迁移源；`:memory:` 仍表示不持久化。领域库和协调库也在项目内。
 - 每仓库领域状态和私钥：主数据库旁 `workspaces/<workspaceId>.sqlite`；不能选为 agent 文件根。
 - 私有配置：`~/.codex/coordination/host.json` 或 `CODEX_AMP_HOST_CONFIG`。宿主目录、数据库、TLS 私钥、配置文件从授权文件读取及扫描中排除。
 

@@ -1,15 +1,15 @@
 import { search as searchApi, control as controlApi } from './runtime.mjs'
 const { CatalogSearch, projectSearchRecords } = searchApi
 const { applyControlRegistry } = controlApi
-import { digestOf } from 'attention-manifest-protocol/semantic'
-import type { Database } from 'attention-manifest-protocol/database/service'
-import type { WorkspaceSnapshot } from 'attention-manifest-protocol/context/workspace.js'
-import type { DiscoverySearch } from 'attention-manifest-protocol/discover'
-import type { HostComponent } from 'attention-manifest-protocol/discover'
+import { digestOf } from 'amp-legacy/semantic'
+import type { Database } from 'amp-legacy/database/service'
+import type { WorkspaceSnapshot } from 'amp-legacy/context/workspace.js'
+import type { DiscoverySearch } from 'amp-legacy/discover'
+import type { HostComponent } from 'amp-legacy/discover'
 import { SearchProcess } from './search-process.mjs'
 import type { SearchProcessConfig } from './config.mjs'
 import { readFileSync } from 'node:fs'
-import type { KnowledgeEntry } from 'attention-manifest-protocol/knowledge'
+import type { KnowledgeEntry } from 'amp-legacy/knowledge'
 
 function connectionOptions(node: string, configured: Record<string, any> = {}) {
   const options: Record<string, any> = { requestTimeout: 10_000, ...configured, ...(configured.cloud ? {} : { node: configured.node ?? node }) }

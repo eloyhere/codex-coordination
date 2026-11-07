@@ -1,13 +1,13 @@
 /** Native cognitive/kernel/governed runtimes wired to durable AMP adapters. */
 import { database as databaseApi, process as processApi, runtime, moduleApi, kernel as kernelApi, thread } from './runtime.mjs'
-import type { Database } from 'attention-manifest-protocol/database'
-import type { ControlPort } from 'attention-manifest-protocol/control'
-import type { LlmClient } from 'attention-manifest-protocol/module'
+import type { Database } from 'amp-legacy/database'
+import type { ControlPort } from 'amp-legacy/control'
+import type { LlmClient } from 'amp-legacy/module'
 import type { HostConfiguration } from './config.mjs'
 import type { HostRegistries } from './registries.mjs'
 import type { HostConnections } from './connections.mjs'
 import type { DomainApi } from './api.mjs'
-import type { WorkspaceToolDefinition } from 'attention-manifest-protocol/protocol/workspace.js'
+import type { WorkspaceToolDefinition } from 'amp-legacy/protocol/workspace.js'
 import { ERROR_CODES, fail } from '../lib/amp.mjs'
 import { requestHostApproval } from './host-client.mjs'
 

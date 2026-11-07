@@ -25,22 +25,24 @@ import { HostRetrieval } from './retrieval.mjs'
 import { HostCoordination } from '../coordination/host.mjs'
 import { requestHostApproval } from './host-client.mjs'
 import { readHostConfiguration } from './config.mjs'
-import type { LlmClient } from 'attention-manifest-protocol/module'
-import { controlToolDefinitions } from 'attention-manifest-protocol/protocol/control.js'
-import { workspaceToolDefinitions } from 'attention-manifest-protocol/protocol/workspace.js'
-import { globalToolDefinitions } from 'attention-manifest-protocol/protocol/global.js'
-import { filesystemToolDefinitions } from 'attention-manifest-protocol/protocol/filesystem.js'
-import { globalFilesystemToolDefinitions } from 'attention-manifest-protocol/protocol/globalFilesystem.js'
-import { digestOf } from 'attention-manifest-protocol/semantic'
-import { selectFocus } from 'attention-manifest-protocol/attention/attention.js'
+import type { LlmClient } from 'amp-legacy/module'
+import { controlToolDefinitions } from 'amp-legacy/protocol/control.js'
+import { workspaceToolDefinitions } from 'amp-legacy/protocol/workspace.js'
+import { globalToolDefinitions } from 'amp-legacy/protocol/global.js'
+import { filesystemToolDefinitions } from 'amp-legacy/protocol/filesystem.js'
+import { globalFilesystemToolDefinitions } from 'amp-legacy/protocol/globalFilesystem.js'
+import { digestOf } from 'amp-legacy/semantic'
+import { selectFocus } from 'amp-legacy/attention/attention.js'
 import { randomUUID } from 'node:crypto'
-import type { Frame, Receipt } from 'attention-manifest-protocol/types'
-import type { ControlPort } from 'attention-manifest-protocol/control'
-import type { WorkspaceSnapshot } from 'attention-manifest-protocol/context/workspace.js'
-import type { FilesystemSession } from 'attention-manifest-protocol/file'
+import type { Frame, Receipt } from 'amp-legacy/types'
+import type { ControlPort } from 'amp-legacy/control'
+import type { WorkspaceSnapshot } from 'amp-legacy/context/workspace.js'
+import type { FilesystemSession } from 'amp-legacy/file'
 import { resolveWorkspace } from '../lib/store.mjs'
 import { ERROR_CODES, fail } from '../lib/amp.mjs'
 import type { ToolDefinition } from '../lib/tools.mjs'
+import { projectLegacyStorage } from './legacy-storage.mjs'
+import { importLegacyControl } from './control-migration.mjs'
 
 export const AMP_DEFINITIONS = [
   ...workspaceToolDefinitions(), ...globalToolDefinitions(),
@@ -78,6 +80,7 @@ export class AmpHost {
   private filesystem?: InstanceType<typeof FilesystemService>
   private binding?: Binding
   private databasePath?: string
+  private legacySourcePath?: string
   private toolCatalog?: readonly ToolDefinition[]
   constructor(private readonly options: HostOptions = {}) {}
   setToolCatalog(tools: readonly ToolDefinition[]) { this.toolCatalog = tools }
@@ -86,21 +89,24 @@ export class AmpHost {
   /** Selecting a repository is a host operation; canonical tool args never contain credentials. */
   async select(root: unknown) {
     const workspace = realpathSync(resolveWorkspace(root))
+    const privateRoot = relative(resolve(homedir(), '.codex'), workspace)
+    if (privateRoot === '' || !isAbsolute(privateRoot) && privateRoot !== '..' && !privateRoot.startsWith('..' + sep)) fail(ERROR_CODES.PERMISSION, 'AMP host credentials and private state cannot be selected as an agent filesystem root')
     if (this.binding?.workspace === workspace) return this.status()
     if (this.binding && (this.binding.workspaceService.pendingSettlements().length || this.binding.globalService.pendingSettlements().length)) fail(ERROR_CODES.INVALID_STATE, 'Settle pending contexts before switching repositories')
-    this.initialize()
+    const workspaceId = `workspace.${digestOf(workspace).slice(7, 39)}`
+    const localStorage = await this.initialize(workspace, workspaceId)
     const config = readHostConfiguration()
     const within = (base: string, target: string) => { const child = relative(base, target); return child === '' || !child.startsWith(`..${sep}`) && child !== '..' && !isAbsolute(child) }
     const privateDirectories = [join(homedir(), '.codex'), ...(this.databasePath !== ':memory:' ? [join(dirname(this.databasePath!), 'workspaces')] : [])].map(path => resolve(path))
     if (privateDirectories.some(path => within(path, workspace))) fail(ERROR_CODES.PERMISSION, 'AMP host credentials and private state cannot be selected as an agent filesystem root')
     const excluded = ['.git', 'node_modules', '.codex-coordination']
     const privateFiles = this.databasePath !== ':memory:' ? [this.databasePath!, ...['-wal', '-shm', '-journal'].map(suffix => this.databasePath! + suffix)] : []
+    if (this.legacySourcePath && this.legacySourcePath !== ':memory:') privateFiles.push(this.legacySourcePath, ...['-wal', '-shm', '-journal'].map(suffix => this.legacySourcePath! + suffix))
     if (process.env.CODEX_AMP_HOST_CONFIG) privateFiles.push(resolve(process.env.CODEX_AMP_HOST_CONFIG))
     if (config.searchConnection?.tls?.keyFile) privateFiles.push(resolve(config.searchConnection.tls.keyFile))
     for (const path of [...privateDirectories, ...privateFiles]) if (within(workspace, path)) excluded.push(relative(workspace, path).split(sep).join('/'))
     const database = this.database!
     const sessions = this.sessions!
-    const workspaceId = `workspace.${digestOf(workspace).slice(7, 39)}`
     const existing = database.db.prepare('SELECT workspace_id FROM workspaces WHERE workspace_id=?').get(workspaceId)
     if (!existing) database.controlService.createWorkspace(workspaceId, workspace)
     const opened = sessions.open({
@@ -125,7 +131,7 @@ export class AmpHost {
     }
     const searchNode = this.options.searchNode ?? process.env.CODEX_AMP_SEARCH_NODE ?? config.searchNode ?? 'http://127.0.0.1:9200'
     let copied: HostCoordination | undefined
-    const copiedKnowledge = () => copied?.knowledge() ?? (this.databasePath !== ':memory:' && existsSync(join(dirname(this.databasePath!), 'workspaces', `${workspaceId}.coordination.sqlite`)) ? this.binding!.coordination().knowledge() : [])
+    const copiedKnowledge = () => copied?.knowledge() ?? (localStorage && existsSync(localStorage.coordination) ? this.binding!.coordination().knowledge() : [])
     const components = () => [
       { id: 'codex-coordination', kind: 'plugin' as const, name: 'Codex Coordination', description: 'AMP host integration for Codex', projectId: 'project:.' },
       ...this.toolDefinitions().map(tool => ({ id: tool.name, kind: 'tool' as const, name: tool.name, description: tool.description, projectId: 'project:.' })),
@@ -135,7 +141,7 @@ export class AmpHost {
     let workspaceService = new WorkspaceAgentService({ agentId: 'codex-coordination', snapshot, store, projectIds: ['project:.'], control, search, ...ports })
     let globalService = new GlobalAgentService({ agentId: 'codex-coordination', snapshot, store, projectIds: snapshot.entities.filter(entity => entity.kind === 'project').map(entity => entity.id), control, search, ...ports })
     const previous = this.binding
-    const domainPath = this.databasePath === ':memory:' ? ':memory:' : join(dirname(this.databasePath!), 'workspaces', `${workspaceId}.sqlite`)
+    const domainPath = localStorage?.domain ?? ':memory:'
     if (domainPath !== ':memory:') mkdirSync(dirname(domainPath), { recursive: true })
     const domainDatabase = new Database(domainPath)
     const keys = new HostKeys(domainDatabase)
@@ -143,7 +149,7 @@ export class AmpHost {
     const connections = new HostConnections(config.endpoints ?? [], domainDatabase, () => database.controlService.listRegistry(workspaceId, 'protocols', true), keys, api, config.listeners ?? [])
     const cognitive = new HostCognitiveRuntime(domainDatabase, control, registries, connections, api, config, AMP_DEFINITIONS, (name, args) => this.call(name, args), this.options.llm)
     this.binding = { workspace, workspaceId, snapshot, registries, api, keys, connections, cognitive, hooks: new HostHooks(files, domainDatabase, api), artifacts: new HostArtifacts(domainDatabase), retrieval: new HostRetrieval({ workspaceId, database, revision: () => snapshot.revision, tools: () => this.toolDefinitions(), call: (name, args) => this.call(name, args), context: args => this.context(args) }), control, files, globalFiles: new GlobalFilesystemSession(files), workspaceService, globalService,
-      coordination: () => copied ??= new HostCoordination({ workspace, sessionId: `${workspaceId}.coordination`, databasePath: domainPath === ':memory:' ? ':memory:' : domainPath.replace(/\.sqlite$/, '.coordination.sqlite'), descriptor: opened.descriptor, revision: () => snapshot.revision, call: (name, args) => this.call(name, args) }),
+      coordination: () => copied ??= new HostCoordination({ workspace, sessionId: `${workspaceId}.coordination`, databasePath: localStorage?.coordination ?? ':memory:', descriptor: opened.descriptor, revision: () => snapshot.revision, call: (name, args) => this.call(name, args) }),
       sessionService: new SessionControlService({ control }),
       refresh: async () => {
         if (workspaceService.pendingSettlements().length || globalService.pendingSettlements().length) fail(ERROR_CODES.INVALID_STATE, 'Settle pending contexts before refreshing the snapshot')
@@ -163,8 +169,15 @@ export class AmpHost {
   }
 
   status() {
+    const migration = this.database && this.binding && this.databasePath !== ':memory:' && this.database.db.prepare("SELECT 1 FROM sqlite_master WHERE name='codex_control_migration' AND type='table'").get() ? this.database.db.prepare('SELECT report FROM codex_control_migration WHERE workspace_id=?').get(this.binding.workspaceId) : undefined
     return { ok: true, workspace: this.binding?.workspace ?? null, workspaceId: this.binding?.workspaceId ?? null,
+      storage: { control: this.databasePath ?? null, projectLocal: !!this.binding && this.databasePath !== ':memory:', migration: migration ? JSON.parse(String(migration.report)) : null },
       sessionId: this.binding?.files.sessionId ?? null, revision: this.binding?.snapshot.revision ?? null, diagnostics: this.binding?.snapshot.diagnostics ?? [], tools: AMP_DEFINITIONS.map(tool => tool.name) }
+  }
+  nativeFilesystemScope() {
+    if (!this.binding) return undefined
+    const root = this.binding.files.descriptor.roots[0]
+    return { root: this.binding.workspace, exclude: root?.exclude ?? [] }
   }
   workspaceView(value: Record<string, any>, verbosity: unknown) {
     if (verbosity === 'full') return value
@@ -291,15 +304,27 @@ export class AmpHost {
     }
   }
 
-  private initialize() {
-    if (this.database) return
-    const path = this.options.databasePath ?? process.env.CODEX_AMP_DATABASE ?? join(homedir(), '.codex', 'coordination', 'amp.sqlite')
-    if (path !== ':memory:' && !isAbsolute(path)) fail(ERROR_CODES.INVALID_ARGUMENT, 'AMP database path must be absolute')
-    if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
-    this.database = new Database(path)
+  private async initialize(workspace: string, workspaceId: string) {
+    const source = this.options.databasePath ?? process.env.CODEX_AMP_DATABASE ?? join(homedir(), '.codex', 'coordination', 'amp.sqlite')
+    if (source !== ':memory:' && !isAbsolute(source)) fail(ERROR_CODES.INVALID_ARGUMENT, 'AMP database path must be absolute')
+    const oldDomain = source === ':memory:' ? undefined : join(dirname(source), 'workspaces', `${workspaceId}.sqlite`)
+    if (oldDomain) {
+      const privatePool = relative(dirname(oldDomain), workspace)
+      if (privatePool === '' || !isAbsolute(privatePool) && privatePool !== '..' && !privatePool.startsWith('..' + sep)) fail(ERROR_CODES.PERMISSION, 'Legacy host database directories cannot be selected as a project root')
+    }
+    const local = oldDomain ? await projectLegacyStorage(workspace, { domain: oldDomain, coordination: oldDomain.replace(/\.sqlite$/, '.coordination.sqlite') }) : undefined
+    const path = local?.control ?? ':memory:'
+    if (this.database && this.databasePath === path) return local
+    await this.close()
+    const database = new Database(path)
+    try { if (path !== ':memory:' && resolve(source) !== resolve(path)) importLegacyControl(database, source, workspaceId) }
+    catch (error) { database.close(); throw error }
+    this.database = database
     this.databasePath = path
+    this.legacySourcePath = source
     this.sessions = new SessionRegistry({ store: this.database.workspaceSessions })
     this.filesystem = new FilesystemService({ registry: this.sessions, store: new SqliteFilesystemStore(this.database.db), timeZone: 'utc' })
+    return local
   }
 }
 

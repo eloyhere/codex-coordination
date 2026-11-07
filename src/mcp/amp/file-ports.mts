@@ -3,8 +3,8 @@ import { mkdtempSync, mkdirSync, readdirSync, lstatSync, copyFileSync, rmSync, r
 import { join, dirname, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { file, fingerprint, outline, registry } from './runtime.mjs'
-import type { FilesystemSession } from 'attention-manifest-protocol/file'
-import type { Database } from 'attention-manifest-protocol/database'
+import type { FilesystemSession } from 'amp-legacy/file'
+import type { Database } from 'amp-legacy/database'
 import { ERROR_CODES, fail } from '../lib/amp.mjs'
 
 export const FileOperations = ['fingerprintFile', 'fingerprintFileMeta', 'fingerprintTree', 'parseOffice', 'collectDirectory', 'digestDirectory', 'diffDirectory', 'verifyModuleContent'] as const

@@ -1,4 +1,16 @@
 /** Typed data exchanged between the local MCP server and the React app. */
+export const SETTINGS_INTERFACES = [
+  { name: 'coordination_registry', label: '注册中心' },
+  { name: 'coordination_environment', label: '环境' },
+  { name: 'coordination_connections', label: '连接' },
+  { name: 'coordination_keys', label: '密钥' },
+] as const
+export interface SettingsView {
+  ok: true
+  view: 'settings'
+  workspace: string | null
+  interfaces: { name: string; label: string; inputSchema: Record<string, unknown> }[]
+}
 export interface GoalSummary {
   id: string
   statement: string
@@ -48,6 +60,7 @@ export interface ProtocolRecord {
   payload: Record<string, unknown>
 }
 export interface DashboardData {
+  ampSession?: { sessions: { threadId: string; sessionId: string }[]; selected: { threadId: string; sessionId: string } | null; modules: { module: string; tier: string }[]; groups: Record<string, { scope: string; records: unknown[]; total: number }>; limitations: string[]; observedAt: string } | null
   ok: true
   workspace: string | null
   protocol: { package: string; version: string; wireVersion: string; supportedKinds: string[] }

@@ -1,12 +1,12 @@
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import { fullFormats } from 'ajv-formats/dist/formats.js'
-import type { LedgerSnapshot } from 'attention-manifest-protocol/ledger'
+import type { LedgerSnapshot } from 'amp-legacy/ledger'
 /** The bounded AMP surface supported by this Codex host adapter. */
-import ampPackage from 'attention-manifest-protocol/package.json' with { type: 'json' }
+import ampPackage from 'amp-legacy/package.json' with { type: 'json' }
 import { artifactSchemas, artifactKinds } from '../amp/schemas.mjs'
-import { validateClaim, validateHypothesis } from 'attention-manifest-protocol/warrant'
+import { validateClaim, validateHypothesis } from 'amp-legacy/warrant'
 import { canonicalJson, digestOf, ERROR_CODES, fail, requireRecord, requireEnum } from './amp.mjs'
-import { verifySnapshot as upstreamVerify } from 'attention-manifest-protocol/ledger'
+import { verifySnapshot as upstreamVerify } from 'amp-legacy/ledger'
 
 export const PROTOCOL_INFO = { package: ampPackage.name, version: ampPackage.version }
 export const SCHEMAS = artifactKinds

@@ -5,7 +5,7 @@ import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 
-const root = dirname(fileURLToPath(import.meta.resolve('attention-manifest-protocol/package.json')))
+const root = dirname(fileURLToPath(import.meta.resolve('amp-legacy/package.json')))
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const modules = readdirSync(join(root, 'lib'), { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => entry.name)
 const files = modules.map(name => join(root, 'lib', name, 'index.d.ts'))

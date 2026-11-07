@@ -1,5 +1,5 @@
-import type { Goal } from 'attention-manifest-protocol/types'
-import { createGoalLifecycle, transitionGoal as ampTransitionGoal } from 'attention-manifest-protocol/goal'
+import type { Goal } from 'amp-legacy/types'
+import { createGoalLifecycle, transitionGoal as ampTransitionGoal } from 'amp-legacy/goal'
 /**
  * Goals: the observable outcomes a coordination ledger tracks.
  *

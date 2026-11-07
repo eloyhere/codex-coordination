@@ -1,10 +1,10 @@
 # codex-coordination
 
-A Codex plugin with a **TypeScript MCP server**, a **React 19 dashboard**, and 13 workflow skills. The server imports **attention-manifest-protocol 0.6.3 from npm**; the interface uses **periodicity-react 0.1.15**, including its default ripple effects.
+A Codex plugin with a **TypeScript MCP server** and a **settings-only React interface**. Popup, notification and business-dashboard UI has been removed by user request; backend business tools and data remain available. The interface uses **periodicity-react**.
 
 **English** · [简体中文](README.zh-CN.md)
 
-It exposes AMP's 60 original service tools, nine host adapters and the original coordination tools, plus all 24 coordination agent tools and coordination_project (overlapping names are merged): 98 tools total. Native registries, structured scanning, Elasticsearch search, context, governance, signing, delegation, connections and cognitive runtimes use AMP implementations. The **AMP 能力** dashboard tab calls the same tools. See [capability mapping and configuration](docs/AMP-INTEGRATION.md).
+It exposes AMP's 60 original service tools, nine host adapters and the original coordination tools, plus all 24 coordination agent tools and coordination_project (overlapping names are merged): 98 tools total. Native registries, structured scanning, Elasticsearch search, context, governance, signing, delegation, connections and cognitive runtimes use AMP implementations. The UI exposes settings only; agents call business tools directly. See [capability mapping and configuration](docs/AMP-INTEGRATION.md).
 
 Goals, plans, handoffs, attention frames and receipts remain compatible with the existing version 2 `.codex-coordination/ledger.json` and AMP wire version `0.1`. Native AMP control and domain state use host-owned SQLite databases.
 
@@ -69,7 +69,7 @@ The plugin contains built server modules and one self-contained HTML app. Its ru
 | `coordination_handoff` | Assign, accept, start, submit and review duties |
 | `coordination_check` | Audit consistency or export an AMP snapshot |
 | `coordination_protocol` | Discover schemas, validate AMP artifacts, record/list frames and receipts |
-| `coordination_dashboard` | Open the React view, inspect data and run audits |
+| `coordination_dashboard` | Open project configuration settings only |
 
 The original ledger forms above take an absolute `workspace`, except that the dashboard entrypoint also accepts `{}`. Goal/plan calls without workspace use the copied workspace-bound interface; [all named tools and compatibility rules](docs/COORDINATION-TOOLS.md) are documented separately. Native AMP tools first bind a repository through `coordination_workspace`; credentials remain in the host.
 

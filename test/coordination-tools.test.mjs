@@ -28,7 +28,7 @@ test('all 24 copied registrations retain formal names and project has a native p
   assert.deepEqual(definitions.map(item => item.name).sort(), [...snapshot.tools].sort())
   for (const definition of definitions) assert.ok(toolNamed(definition.name), definition.name)
   assert.ok(toolNamed('coordination_project'))
-  assert.equal(TOOLS.length, 98)
+  assert.equal(TOOLS.length, 163)
   const read = toolNamed('coordination_read')
   assert.ok(read.inputSchema.properties.mode.description)
   assert.equal(advertisedSchema(read).properties.mode.description, undefined)

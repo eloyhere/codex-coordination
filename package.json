@@ -1,7 +1,7 @@
 {
   "name": "codex-coordination",
-  "version": "0.5.2",
-  "description": "A TypeScript Codex plugin with a React / Periodicity dashboard and npm AMP integration for durable goals, plans, handoffs, attention frames and receipts.",
+  "version": "0.6.3",
+  "description": "A TypeScript Codex plugin with project-local AMP workflows, Codex lifecycle integration and a settings-only React interface.",
   "keywords": [
     "codex",
     "codex-plugin",
@@ -42,10 +42,11 @@
     "build": "npm run typecheck && npm run build:server && npm run build:app",
     "dev": "npm run build:server && vite",
     "prepack": "npm run build",
-    "test:ui": "playwright test",
+    "test:ui": "npm run build:server && playwright test",
     "smoke:package": "node scripts/package-smoke.mjs",
     "smoke:search": "node scripts/amp-search-smoke.mjs",
-    "inventory:amp": "node scripts/inventory-amp.mjs"
+    "inventory:amp": "node scripts/inventory-amp.mjs",
+    "inventory:migration": "node scripts/migration-inventory.mjs"
   },
   "files": [
     ".agents/plugins/marketplace.json",
@@ -60,6 +61,7 @@
     "NOTICE",
     "src/**",
     "vendor/coordination-runtime/**",
+    "vendor/amp-sqlite/**",
     "tsconfig*.json",
     "vite.config.ts",
     "playwright.config.ts"
@@ -70,7 +72,8 @@
     "@modelcontextprotocol/ext-apps": "2.0.4",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
-    "attention-manifest-protocol": "0.6.3",
+    "amp-legacy": "npm:attention-manifest-protocol@0.6.3",
+    "attention-manifest-protocol": "0.7.9",
     "mammoth": "1.13.0",
     "periodicity-react": "0.1.15",
     "react": "19.3.1",

@@ -1,6 +1,6 @@
 {
   "name": "codex-coordination",
-  "version": "0.5.1",
+  "version": "0.6.3",
   "description": "Native AMP services, editable registries and domain runtimes for Codex, with TypeScript, React and Periodicity.",
   "author": {
     "name": "Eloy Kim",
@@ -22,11 +22,12 @@
     "multi-agent"
   ],
   "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Coordination",
     "shortDescription": "Goals, context and teamwork",
-    "longDescription": "Connect Codex to native AMP workspace, filesystem, search, registry, warrant, governance, signing, delegation and runtime services through MCP. Inspect and edit state in the React / Periodicity workbench.",
+    "longDescription": "Connect Codex to AMP services through MCP. The React interface contains project settings for registries, environments, connections and keys only. Popup, notification and business dashboard UI is disabled.",
     "developerName": "Eloy Kim",
     "category": "Productivity",
     "capabilities": [

@@ -27,7 +27,7 @@ test('all tool names are discoverable without Elasticsearch and catalog metrics 
   }
   const before = await host.context({ action: 'metrics' })
   const after = await host.context({ action: 'metrics' })
-  assert.equal(before.catalog.hash, after.catalog.hash); assert.equal(before.catalog.tools, 98)
+  assert.equal(before.catalog.hash, after.catalog.hash); assert.equal(before.catalog.tools, 163)
   assert.equal(before.catalog.names, undefined)
   assert.ok(SERVER_INSTRUCTIONS.length <= 512)
 })
@@ -59,5 +59,5 @@ test('archived retrieval persists but cannot be expanded from another selected w
   await host.close(); await host.select(workspace)
   assert.equal((await host.context({ action: 'detail', id: result.archive.id })).ok, true)
   const other = join(directory, 'other'); mkdirSync(other); await host.select(other)
-  await assert.rejects(host.context({ action: 'detail', id: result.archive.id }), { code: 'PERMISSION' })
+  await assert.rejects(host.context({ action: 'detail', id: result.archive.id }), { code: 'NOT_FOUND' })
 })

@@ -1,7 +1,7 @@
 /** Discoverable JSON binding to AMP's published computations and domain objects. */
 import * as amp from './runtime.mjs'
 import catalogData from './catalog.json' with { type: 'json' }
-import type { Database } from 'attention-manifest-protocol/database'
+import type { Database } from 'amp-legacy/database'
 import type { webcrypto } from 'node:crypto'
 import { ERROR_CODES, fail } from '../lib/amp.mjs'
 import { requireArtifact } from '../lib/protocol.mjs'

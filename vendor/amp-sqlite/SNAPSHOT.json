@@ -1,0 +1,357 @@
+{
+  "source": {
+    "project": "R:/project/deepseek-coordination",
+    "package": "attention-manifest-protocol",
+    "version": "0.7.1",
+    "packageRoot": "node_modules/attention-manifest-protocol"
+  },
+  "layers": [
+    "entity",
+    "cache",
+    "service",
+    "repository",
+    "sql"
+  ],
+  "support": [
+    "connection",
+    "serialization"
+  ],
+  "policy": "Every listed source file is copied byte-for-byte. Adapt only outside vendor/amp-sqlite.",
+  "files": [
+    {
+      "path": "LICENSE",
+      "bytes": 11560,
+      "sha256": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5"
+    },
+    {
+      "path": "NOTICE",
+      "bytes": 258,
+      "sha256": "41dc1033df194713c9db8f2b45ebc71f949ec5b8bb8544168081fa521871132f"
+    },
+    {
+      "path": "lib/cache/entityCache.d.ts",
+      "bytes": 333,
+      "sha256": "e4ae0aaa12f554491245b1ad8e63d05520fdcb4d01e0b2cd9be40384a53fcda0"
+    },
+    {
+      "path": "lib/cache/entityCache.js",
+      "bytes": 2808,
+      "sha256": "dd396ac8e06c21a037eee9aca261c5a09e6b4f5c71d2fed8a480bc88d98c1061"
+    },
+    {
+      "path": "lib/cache/index.d.ts",
+      "bytes": 529,
+      "sha256": "7a86588dc222685cdbe9103092318506a0e4e862dd69cd654f355acc1b05c207"
+    },
+    {
+      "path": "lib/cache/index.js",
+      "bytes": 296,
+      "sha256": "22631b8b5470f44809dce48998eec58f4e5d0875cc99d1897ce3a9bfb9999877"
+    },
+    {
+      "path": "lib/cache/proxy.d.ts",
+      "bytes": 1511,
+      "sha256": "5312e1b3e9be414d5e51f92af68fe688c57d002aa5357b1d29bc6b1fb936176d"
+    },
+    {
+      "path": "lib/cache/proxy.js",
+      "bytes": 8349,
+      "sha256": "38cac919024a32b954ea5b6cc8e4c6279dbea2e9146aae3e1add4cdec2202589"
+    },
+    {
+      "path": "lib/cache/serviceProxy.d.ts",
+      "bytes": 1476,
+      "sha256": "ec0c9da0efe31b5a01e3716e0cd1b75b5819a2822c7af9d5b551f5a6d1af96b7"
+    },
+    {
+      "path": "lib/cache/serviceProxy.js",
+      "bytes": 8426,
+      "sha256": "b80eba6009906b5471c34c2ad4614361348c1941fa930c1d4925c4739e6ee72f"
+    },
+    {
+      "path": "lib/cache/types.d.ts",
+      "bytes": 680,
+      "sha256": "d8b78048513d7b0ca8e06d4b26fa1cdeed82713430ec762ead7edce92444ceb7"
+    },
+    {
+      "path": "lib/cache/types.js",
+      "bytes": 56,
+      "sha256": "e96412a92d859580614f34d4004defcd56f34f10adc67c2e857bde05c1f977fe"
+    },
+    {
+      "path": "lib/connection/index.d.ts",
+      "bytes": 263,
+      "sha256": "64964ea83fcddad7cbfce4e1c944ac092fb35c8f7761a2fc942ffc1743f3c6ff"
+    },
+    {
+      "path": "lib/connection/index.js",
+      "bytes": 100,
+      "sha256": "f302de4739db61eaa187b5b3f99c703d4eefea44240e38bfc5939ad9ca0474fa"
+    },
+    {
+      "path": "lib/connection/pool.d.ts",
+      "bytes": 167,
+      "sha256": "5e688de5d993431b25758b3cce07040a9ffc0e84d0816f36649563e2ad36d1c4"
+    },
+    {
+      "path": "lib/connection/pool.js",
+      "bytes": 7163,
+      "sha256": "bab86fdbf1a55d245e135a37233f30ba19ccf714d004ac254d6ba3ca4dd57178"
+    },
+    {
+      "path": "lib/connection/types.d.ts",
+      "bytes": 1647,
+      "sha256": "a8f5053f9b9e14900152e253ab9bdb5cacc22e443f40c66bc26008a4938c920a"
+    },
+    {
+      "path": "lib/connection/types.js",
+      "bytes": 200,
+      "sha256": "bce13274a6b9fc13929479b1a98b0e1c1168e84c3a70ebbaed9d72e7c2d61cef"
+    },
+    {
+      "path": "lib/entity/associate.d.ts",
+      "bytes": 2798,
+      "sha256": "54ac9b65c1aea7186159307b3b43f9d0a420c13a7b029fd654ce105bca259316"
+    },
+    {
+      "path": "lib/entity/associate.js",
+      "bytes": 7573,
+      "sha256": "3a726c93d32c067f4d9efe9a052f7726dd2d4fb2382c9c748ac20cb872f7a2a2"
+    },
+    {
+      "path": "lib/entity/declarations.d.ts",
+      "bytes": 3234,
+      "sha256": "5b940402caa8cdd5a24d136b90480b2895cfedbf655358ca915016b2ff395a07"
+    },
+    {
+      "path": "lib/entity/declarations.js",
+      "bytes": 17034,
+      "sha256": "3db5e6915c0f4c2755ecbaaedcf4c109ebcae4b40fa4eac8a25088c6cd873c45"
+    },
+    {
+      "path": "lib/entity/entity.d.ts",
+      "bytes": 3535,
+      "sha256": "23c25f5e13239ce8292496cf54c6cfee81b9f78c0d6a920169b9b7568a86e905"
+    },
+    {
+      "path": "lib/entity/entity.js",
+      "bytes": 17163,
+      "sha256": "6e8cbf0fdc0d05d1006eb7dcac6ce7ab85b3aa7b17c7f9757bdf34d0d6a3886a"
+    },
+    {
+      "path": "lib/entity/index.d.ts",
+      "bytes": 246,
+      "sha256": "99f789b8d557687dc57f01f34fa0de8acff2809925acc2c20d99bb6252bd6c78"
+    },
+    {
+      "path": "lib/entity/index.js",
+      "bytes": 246,
+      "sha256": "99f789b8d557687dc57f01f34fa0de8acff2809925acc2c20d99bb6252bd6c78"
+    },
+    {
+      "path": "lib/entity/key.d.ts",
+      "bytes": 2866,
+      "sha256": "f173ffc4f3c77e7349a211b2e3aa88453396a6d75a0ee261a7e71638302fdce2"
+    },
+    {
+      "path": "lib/entity/key.js",
+      "bytes": 9268,
+      "sha256": "15e0ef2aa3f48d2a1e7fada4929b38052b098b71637e1abff748f31eedf2f3fb"
+    },
+    {
+      "path": "lib/entity/lifecycle.d.ts",
+      "bytes": 5297,
+      "sha256": "11f9a1ad289c90fd266660c33f2089838bb86a5c92145741450aa091c948d9ff"
+    },
+    {
+      "path": "lib/entity/lifecycle.js",
+      "bytes": 8462,
+      "sha256": "ed9cb578e40a47265fdd7924db88ea830dd2b9857d46d512c7f8e7fdacee295f"
+    },
+    {
+      "path": "lib/entity/registry.d.ts",
+      "bytes": 681,
+      "sha256": "c2bdfb461c78f75685d64986865aaf0047e09c613dc9225b2e55627941c8b539"
+    },
+    {
+      "path": "lib/entity/registry.js",
+      "bytes": 745,
+      "sha256": "915470b12a19040d8841f4a62cbe2347d8740a436b652fc2df5f13aff8b2db89"
+    },
+    {
+      "path": "lib/entity/types.d.ts",
+      "bytes": 5646,
+      "sha256": "f41f991a0633732a3b9b0acfcae15471b718b5035ff5ceb142b06dfedf72ac64"
+    },
+    {
+      "path": "lib/entity/types.js",
+      "bytes": 93,
+      "sha256": "85410737ade17212281faf571351c30d54ae58aa54e8c6cc859b2fbff073b425"
+    },
+    {
+      "path": "lib/repository/index.d.ts",
+      "bytes": 281,
+      "sha256": "af069f9f1adc3987923e43a8461721a50706d3b636fb13e648561e12673186ff"
+    },
+    {
+      "path": "lib/repository/index.js",
+      "bytes": 125,
+      "sha256": "873e0688a2f88de90e1b49656c887fdf490432ac7e325066f53e3b6390d984b8"
+    },
+    {
+      "path": "lib/repository/sqliteEvents.d.ts",
+      "bytes": 644,
+      "sha256": "6b38a58c7352e14c329554f554380d3342a163ecb309b20b8c4a0256f8de1831"
+    },
+    {
+      "path": "lib/repository/sqliteEvents.js",
+      "bytes": 2273,
+      "sha256": "62a2d537136894279019cf83c73875aebde1b1c9c7101d2168e3af5938b54204"
+    },
+    {
+      "path": "lib/repository/sqliteRepository.d.ts",
+      "bytes": 642,
+      "sha256": "0f03f14a6c0d5fbc375d4e3102be530613a005d631da49cb00792300e59e6f86"
+    },
+    {
+      "path": "lib/repository/sqliteRepository.js",
+      "bytes": 6370,
+      "sha256": "e80cb1b80a85ea2d3a87e34d293c9a4320be9aab383543b1d4ed78d07d5bc352"
+    },
+    {
+      "path": "lib/repository/types.d.ts",
+      "bytes": 882,
+      "sha256": "7a1cdc848e14a3b0c50650105ed85850dc9f6907b31834bcacb92b3672514aec"
+    },
+    {
+      "path": "lib/repository/types.js",
+      "bytes": 81,
+      "sha256": "ffe3b10f1cec66e85c61083c9df4dda4412d6f67a6988572b7f3dcd7270b1f2c"
+    },
+    {
+      "path": "lib/serialization/index.d.ts",
+      "bytes": 691,
+      "sha256": "ebdca1deeb0958972d81fe3b0f244d1ce89e37ce736bacfc9e2b6c2c50aaabb2"
+    },
+    {
+      "path": "lib/serialization/index.js",
+      "bytes": 192,
+      "sha256": "5603d06c8264461ebda0a0b266aee5652d53ca69c49e48790cc434fd909a3569"
+    },
+    {
+      "path": "lib/serialization/json.d.ts",
+      "bytes": 948,
+      "sha256": "95e7891631c095ab83308de779a2ae3a81708e0de9879fac45db688fb596e859"
+    },
+    {
+      "path": "lib/serialization/json.js",
+      "bytes": 6135,
+      "sha256": "027c0a00bb6aaaadf2df1963df6f4233da243c5cb088423788a8ddb12acdf1b3"
+    },
+    {
+      "path": "lib/serialization/traverse.d.ts",
+      "bytes": 363,
+      "sha256": "2ab800af6b9ae8fd5a0fdb4ff2a8b36c48fc1fd0fbf469db0c89e394c25c5a6e"
+    },
+    {
+      "path": "lib/serialization/traverse.js",
+      "bytes": 3384,
+      "sha256": "497b942c311a67251f0f29683609eb07ed070f0572a263823439a0285e6d8584"
+    },
+    {
+      "path": "lib/serialization/types.d.ts",
+      "bytes": 2384,
+      "sha256": "dcd43e9acbcfdacc4b04fa354adabb8fc24027e42a2b719efc7b4d99d960ae90"
+    },
+    {
+      "path": "lib/serialization/types.js",
+      "bytes": 383,
+      "sha256": "ec9c441d09279be8117399a596023d98f35d8d8c40e54d92534f2786c4f07037"
+    },
+    {
+      "path": "lib/service/cascade.d.ts",
+      "bytes": 2959,
+      "sha256": "93e701669fc7359c83b59e683d1d2a84ae3f7882616134e02c9b0a1615fc460c"
+    },
+    {
+      "path": "lib/service/cascade.js",
+      "bytes": 4255,
+      "sha256": "08a5975c5cd3dc104ef6bbeccbf50cdc6fa3571277656cb05090bda04f1105a9"
+    },
+    {
+      "path": "lib/service/index.d.ts",
+      "bytes": 170,
+      "sha256": "18435d03f589f45f289d495a0fe17017b23546ab9ebf0b555659c4fecc82fb47"
+    },
+    {
+      "path": "lib/service/index.js",
+      "bytes": 170,
+      "sha256": "18435d03f589f45f289d495a0fe17017b23546ab9ebf0b555659c4fecc82fb47"
+    },
+    {
+      "path": "lib/service/store.d.ts",
+      "bytes": 6929,
+      "sha256": "e2552354b8a877c10698baf7fcf450b7b4bce722748c7c2f268db6b7d422400b"
+    },
+    {
+      "path": "lib/service/store.js",
+      "bytes": 36974,
+      "sha256": "dbdc3e10fbf1c9d7f9999f20fb56b9d9b178579c8458b05732c1be4b8f12cb38"
+    },
+    {
+      "path": "lib/service/types.d.ts",
+      "bytes": 3881,
+      "sha256": "5e8c936a27668fb655fd92065fb238a9aef9132f803cb04a3769f7ee3f249f09"
+    },
+    {
+      "path": "lib/service/types.js",
+      "bytes": 94,
+      "sha256": "908bb0ba5785013fa1a8c118ff9a2b003c37ad10fcb82faf9a6405f6df5b9972"
+    },
+    {
+      "path": "lib/sql/index.d.ts",
+      "bytes": 249,
+      "sha256": "47add08dcbdad81b0caf7edb986860e72d0336b20dd289535ef4d2da46116043"
+    },
+    {
+      "path": "lib/sql/index.js",
+      "bytes": 113,
+      "sha256": "50ddafe779943ac43d8f067336f566cdf96606640f3a53e83d60f39be1ae3ffe"
+    },
+    {
+      "path": "lib/sql/schema.d.ts",
+      "bytes": 731,
+      "sha256": "8d330614694ac82fcc98f53691c4a7c1a5dc2d17d8c8488a49b8dfb004438cec"
+    },
+    {
+      "path": "lib/sql/schema.js",
+      "bytes": 3520,
+      "sha256": "acb980386918993dbcfbf2a680a7c04a445e4c65da737d21f3af3a7a3c53499d"
+    },
+    {
+      "path": "lib/sql/sqlite.d.ts",
+      "bytes": 434,
+      "sha256": "9f0b136c2df470bb9989ee179dc43986495dbcc0ee83cf069a3432eb6212b635"
+    },
+    {
+      "path": "lib/sql/sqlite.js",
+      "bytes": 3984,
+      "sha256": "6c4ebd88aceb8b573c092d4b1ee76068e1dab79fdeaa00b73fb353f1646e800b"
+    },
+    {
+      "path": "lib/sql/types.d.ts",
+      "bytes": 1362,
+      "sha256": "d0e5a062ccb7833fb160a426e8b3b4bdf5fc12005a28f4823150a3647d73b44c"
+    },
+    {
+      "path": "lib/sql/types.js",
+      "bytes": 84,
+      "sha256": "5c547e1cfcf2ffe990e7743f3a6a4f14bf8d5a0e666c05165152c9e317d90993"
+    },
+    {
+      "path": "package.json",
+      "bytes": 2258,
+      "sha256": "02961b227a101b61c379734e3afa23b538a30af565e41db424a4e94ed602f98b"
+    }
+  ]
+}

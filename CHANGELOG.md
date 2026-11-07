@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog; the project adheres to Semantic Versioning.
 
+## [0.6.3] — 2026-11-07
+
+- Integrate native AMP 0.7.9 workflow, execution, attention, evidence, governance and cooperation ports while retaining explicit legacy compatibility and documenting remaining host gaps.
+- Persist each project's native and legacy state under its own `.codex-coordination`, with source-preserving migrations, scope checks and VCS exclusion adapters.
+- Add Codex command-hook lifecycle capture, native session mapping and goal synchronization; report unavailable full-stream and atomic goal-CAS capabilities honestly.
+- Keep the plugin UI settings-only. Remove status dialogs and notification presentation, expose actual registered configuration schemas, and pin settings calls to the intended project without bypassing host approval.
+- Bundle the verified AMP SQLite source stack, preserve native Store identity across entrypoints, and publish shared build chunks before their importing entrypoints.
+- Expand workflow, isolation, migration, permission, packaging and browser regression coverage.
+
 ## [0.5.2] — 2026-11-03
 
 - Add npm funding metadata and the GitHub Sponsors configuration for eloyhere. This is an npm metadata release; the bundled Codex plugin remains 0.5.1 with unchanged runtime behavior.

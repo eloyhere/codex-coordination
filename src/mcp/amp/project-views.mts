@@ -1,0 +1,190 @@
+/** Scoped project projections. Anchors are derived from observed native file receipts. */
+import { Project } from 'attention-manifest-protocol/project'
+import type { ViewKind, ViewPurpose } from 'attention-manifest-protocol/project'
+import { bindProject } from 'attention-manifest-protocol/persistence'
+import { assertModelParameters } from 'attention-manifest-protocol/agent'
+import type { AgentBinding } from 'attention-manifest-protocol/agent'
+import type { Store } from 'attention-manifest-protocol/service'
+import type { ReceiptCore } from 'attention-manifest-protocol/receipt'
+import { executionFactDigest } from 'attention-manifest-protocol/runtime'
+import type { ToolDefinition } from '../lib/tools.mjs'
+import type { NativeFilesystemScope } from './filesystem.mjs'
+import { assertFileFreshness, fileReceiptTools } from './file-freshness.mjs'
+import { nativeRequest, nativeWorkspaceRoot, openNativeStore } from './native-store.mjs'
+import { projectBindings } from './project.mjs'
+import { requestHostApproval } from './host-client.mjs'
+import { createHash, randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+
+const anchorKind = 'codex.amp.project.anchor_registered'
+const requested = 'codex.amp.project.review_requested', decided = 'codex.amp.project.review_host_decision', reviewed = 'codex.amp.project.review'
+const viewKinds = ['er', 'sequence', 'flow', 'venn', 'architecture', 'mindmap']
+const storePath = (root: string) => join(root, '.codex-coordination', 'amp-07', 'store.sqlite')
+// The canonical adapter appends its migration marker and its gateway call audit even
+// for reads, so a read may only route through it while a legacy journal is pending.
+const migratable = (store: Store) => store.events({ kind: 'codex.amp.project.command' }).length > 0
+  && store.events({ kind: 'codex.amp.project.entity_migration' }).length === 0
+const plain = <T,>(value: T): T => JSON.parse(nativeRequest(value))
+const text = (value: unknown, max = 200): value is string => typeof value === 'string' && !!value.trim() && value.length <= max
+const strings = (value: unknown, max = 20): value is string[] => Array.isArray(value) && value.length <= max && new Set(value).size === value.length && value.every(item => text(item))
+export interface HostProjectViewPolicy { purpose: ViewPurpose; constraints: readonly string[] }
+type Anchor = { anchor: string; receiptId: string; receipt: ReceiptCore; tenantId: string; rootId: string; revision: number }
+
+export function projectViewsBindings(binding: AgentBinding, workspace: () => unknown, filesystemPolicy?: () => NativeFilesystemScope | undefined, hostPolicy: HostProjectViewPolicy = { purpose: 'planning', constraints: ['Projection is descriptive; anchors must remain current'] }): ToolDefinition[] {
+  const identity = { tenantId: binding.tenantId, principalId: binding.principalId, connection: binding.sessionId }
+  // Route initialization through the existing adapter, including its exact legacy
+  // journal migration and mixed-facts refusal. Do not duplicate that state machine.
+  const initialize = () => projectBindings(binding, workspace).find(tool => tool.name === 'attention_manifest_protocol_project.rules')!.handler({})
+  const load = (store: Store, root: string) => {
+    const rootId = createHash('sha256').update(root).digest('hex')
+    const anchors = store.events({ kind: anchorKind }).map(event => plain(event.payload as Anchor)).filter(item => item.tenantId === binding.tenantId && item.rootId === rootId)
+    const project = new Project({ tenantId: binding.tenantId, rootId, anchors: anchors.map(item => item.anchor) })
+    const native = bindProject(store, project); native.rehydrate()
+    if (native.report.skipped.length) throw new Error('Project persistence contains invalid facts')
+    for (const view of project.listViews()) project.validateView(view)
+    return { project, native, anchors, revision: anchors.length }
+  }
+  const head = (state: ReturnType<typeof load>) => nativeRequest({ rules: state.project.listRules(), metadata: state.project.listMetadata(), views: state.project.listViews(), environment: state.project.environment, environmentVersion: state.project.environmentVersion, anchors: state.anchors })
+  const receiptFor = (store: Store, root: string, id: string) => {
+    const receipt = plain(store.refresh<ReceiptCore>('receipt', id))
+    if (!fileReceiptTools.has(receipt.invocation.toolId)) throw new Error('Only observed native filesystem receipts can register anchors')
+    const context = receipt.invocation.context
+    if (!context.agentId || !context.sessionId || !context.operationId || !context.attemptId || !context.executionId || receipt.observation.invocationId !== receipt.invocation.id) throw new Error('Anchor receipt has incomplete native execution identity')
+    if (receipt.invocation.context.tenantId !== binding.tenantId || receipt.invocation.context.principalId !== binding.principalId || receipt.observation.status !== 'success' || !['issued', 'signed', 'anchored', 'verified', 'archived'].includes(receipt.lifecycle ?? '') || receipt.hashAlgorithm !== 'sha256-json-execution-facts/2' || receipt.payloadDigest !== executionFactDigest(receipt.invocation, receipt.observation)) throw new Error('Anchor receipt is invalid or belongs to another principal')
+    assertFileFreshness(receipt, root, binding.tenantId, filesystemPolicy)
+    const path = (receipt.invocation.arguments as any).path
+    return { receipt, anchor: 'file:' + path + '@' + receipt.workspaceAnchor!.snapshotId }
+  }
+  const preview = (store: Store, root: string, args: Record<string, any>) => {
+    const state = load(store, root), project = state.project
+    let effect: any
+    if (args.operation === 'register_anchor') {
+      if (args.expectedVersion !== state.revision) throw new Error('Anchor registry version changed')
+      const observed = receiptFor(store, root, args.receiptId)
+      if (project.resolveAnchor(observed.anchor)) throw new Error('Anchor is already registered')
+      project.registerAnchor(observed.anchor)
+      effect = { ...observed, revision: state.revision + 1, tenantId: project.tenantId, rootId: project.rootId }
+    } else if (args.operation === 'put_metadata') {
+      const old = project.getMetadata(args.path)
+      if ((old?.version ?? 0) !== args.expectedVersion) throw new Error('Metadata version changed')
+      for (const id of args.ruleIds) if (!project.getRule(id)) throw new Error('Metadata source rule does not exist')
+      effect = project.putMetadata({ tenantId: project.tenantId, rootId: project.rootId, path: args.path, tags: args.tags, ruleIds: args.ruleIds, ...(args.metadataKind ? { kind: args.metadataKind } : {}), ...(old ? { expectedVersion: old.version } : {}) })
+    } else {
+      const old = project.getView(args.viewKind)
+      if ((old?.version ?? 0) !== args.expectedVersion) throw new Error('View version changed')
+      for (const id of args.anchors) {
+        const registered = state.anchors.find(item => item.anchor === id)
+        if (!registered || receiptFor(store, root, registered.receiptId).anchor !== id) throw new Error('View anchor is absent or stale')
+      }
+      effect = project.putView({ tenantId: project.tenantId, rootId: project.rootId, kind: args.viewKind, projection: args.projection, sourceRuleIds: args.sourceRuleIds, anchors: args.anchors, purpose: hostPolicy.purpose, constraints: hostPolicy.constraints, freshness: 1 })
+    }
+    return { effect }
+  }
+  const fields: Record<string, string[]> = {
+    register_anchor: ['receiptId'], put_metadata: ['path', 'tags', 'ruleIds', 'metadataKind'], put_view: ['viewKind', 'projection', 'sourceRuleIds', 'anchors'],
+  }
+  const common = ['operation', 'expectedVersion', 'idempotencyKey', 'reason']
+  const validate = (args: Record<string, any>) => {
+    const allowed = fields[args.operation]
+    if (!allowed || Object.keys(args).some(key => ![...common, ...allowed].includes(key)) || !Number.isSafeInteger(args.expectedVersion) || args.expectedVersion < 0 || !text(args.idempotencyKey) || !text(args.reason, 2000) || Buffer.byteLength(nativeRequest(args)) > 65536) throw new Error('Invalid project review parameters')
+    if (args.operation === 'register_anchor' && !text(args.receiptId)) throw new Error('Observed file receiptId is required')
+    if (args.operation === 'put_metadata' && (!text(args.path, 1000) || args.path.includes('\\') || args.path.startsWith('/') || /[:\x00-\x1f]/.test(args.path) || args.path.split('/').some((part: string) => !part || ['.', '..'].includes(part)) || !strings(args.tags) || !strings(args.ruleIds) || args.metadataKind !== undefined && !text(args.metadataKind))) throw new Error('Invalid metadata path, tags or rules')
+    if (args.operation === 'put_view' && (!viewKinds.includes(args.viewKind) || !Object.hasOwn(args, 'projection') || !strings(args.sourceRuleIds) || !strings(args.anchors) || !args.anchors.length)) throw new Error('View requires a projection, source rules and registered anchors')
+  }
+  const views: ToolDefinition = {
+    name: 'attention_manifest_protocol_project_views', description: 'Read native project metadata, views and host-derived file anchors in the selected workspace. Host purpose/constraints remain private; projections confer no execution authority. Current raw-byte anchor and source-rule freshness is reported.', inputSchema: { type: 'object', additionalProperties: false, properties: {} }, annotations: { readOnlyHint: true },
+    async handler(args) {
+      assertModelParameters(args)
+      if (Object.keys(args).length) throw new Error('Project views takes no parameters')
+      // A read must not create storage. Without a store there are no native facts and
+      // no legacy command journal, so the empty projection is the complete snapshot.
+      const root = nativeWorkspaceRoot(workspace())
+      if (!existsSync(storePath(root))) return { metadata: [], views: [], anchors: [], registryVersion: 0 }
+      // Migration is transactional and only owed while a legacy journal is pending;
+      // an already migrated store is read in place so a read never appends a fact.
+      const probe = openNativeStore(() => root)
+      let migrate = false
+      try { migrate = migratable(probe.store) } finally { probe.store.close() }
+      if (migrate) await initialize()
+      const { store } = openNativeStore(() => root)
+      try {
+        const state = load(store, root)
+        const anchors = state.anchors.map(item => { let current = false; try { current = receiptFor(store, root, item.receiptId).anchor === item.anchor } catch {} return { anchor: item.anchor, receiptId: item.receiptId, current } })
+        return { metadata: state.project.listMetadata(), views: state.project.listViews().map(item => {
+          const { purpose, constraints, ...view } = item
+          return { ...view, stale: view.stale || view.sourceVersions.some(source => state.project.getRule(source.ruleId)?.version !== source.version) || (view.anchors ?? []).some(anchor => !anchors.some(item => item.anchor === anchor && item.current)) }
+        }), anchors, registryVersion: state.revision }
+      } finally { store.close() }
+    },
+  }
+  const review: ToolDefinition = {
+    name: 'attention_manifest_protocol_project_review', description: 'Host extension: independently approve put_metadata, put_view or registration of a host-derived file anchor from an observed native file-read receipt. ExpectedVersion is 0 for new metadata/view, current entity version for updates, or registryVersion for anchor registration. Scope, source versions, policy, complete project head and raw file freshness are checked before and after approval. Purpose/constraints/freshness are host-derived.', annotations: { readOnlyHint: false },
+    inputSchema: { type: 'object', additionalProperties: false, required: common, properties: { operation: { enum: Object.keys(fields) }, expectedVersion: { type: 'integer', minimum: 0 }, idempotencyKey: { type: 'string', minLength: 1, maxLength: 200 }, reason: { type: 'string', minLength: 1, maxLength: 2000 }, receiptId: { type: 'string' }, path: { type: 'string' }, tags: { type: 'array', items: { type: 'string' }, maxItems: 20 }, ruleIds: { type: 'array', items: { type: 'string' }, maxItems: 20 }, metadataKind: { type: 'string' }, viewKind: { enum: viewKinds }, projection: {}, sourceRuleIds: { type: 'array', items: { type: 'string' }, maxItems: 20 }, anchors: { type: 'array', items: { type: 'string' }, maxItems: 20 } } },
+    async handler(input) {
+      assertModelParameters(input)
+      const args = plain(input) as Record<string, any>; validate(args)
+      const detachedPolicy = plain(hostPolicy)
+      await initialize()
+      const opened = openNativeStore(workspace), root = opened.root
+      const key = nativeRequest({ ...identity, idempotencyKey: args.idempotencyKey }), request = nativeRequest(args)
+      const terminal = (store: Store) => {
+        const prior = store.events({ kind: reviewed }).map(event => event.payload as any).find(value => value.key === key)
+        if (!prior) return undefined
+        if (prior.request !== request) throw new Error('Idempotency key already used for another project review')
+        return { ...prior.result, replayed: true }
+      }
+      let before: string, effect: any, reviewId: string, approved = false, resumed = false
+      try {
+        const replay = terminal(opened.store); if (replay) return replay
+        const pending = opened.store.events({ kind: requested }).map(event => event.payload as any).find(value => value.key === key)
+        if (pending) {
+          if (pending.request !== request) throw new Error('Idempotency key already used for another project review')
+          const decision = opened.store.events({ kind: decided }).map(event => event.payload as any).find(value => value.key === key && value.reviewId === pending.reviewId && value.request === request)
+          if (!decision) throw new Error('Project review is unresolved; host reconciliation is required')
+          before = pending.head; effect = pending.effect; reviewId = pending.reviewId; approved = decision.approved === true; resumed = true
+        } else {
+          before = nativeRequest({ state: head(load(opened.store, root)), policy: detachedPolicy })
+          effect = preview(opened.store, root, args).effect; reviewId = randomUUID()
+          opened.store.appendEvent(requested, { key, request, head: before, effect, reviewId, ...identity })
+        }
+      } finally { opened.store.close() }
+      if (!resumed) {
+        approved = await requestHostApproval('native-project:' + root, args.operation, { reviewId: reviewId!, ...args, effect: effect!, hostPolicy: detachedPolicy, workspace: root })
+        const audit = openNativeStore(() => root)
+        try { audit.store.appendEvent(decided, { key, request, reviewId: reviewId!, approved, ...identity }) } finally { audit.store.close() }
+      }
+      const current = openNativeStore(() => root)
+      try {
+        return current.store.transaction(() => {
+          const replay = terminal(current.store); if (replay) return replay
+          let valid = false
+          try {
+            const active = openNativeStore(workspace); try { valid = active.root === root } finally { active.store.close() }
+            valid = valid && approved && nativeRequest({ state: head(load(current.store, root)), policy: plain(hostPolicy) }) === before!
+            if (valid) preview(current.store, root, args) // Revalidate raw anchors before the durable operation.
+          } catch { valid = false }
+          let result: Record<string, any> = { approved, changed: false, status: approved ? 'stale_after_approval' : 'rejected', reviewId: reviewId! }
+          if (valid) {
+            const state = load(current.store, root)
+            if (args.operation === 'register_anchor') {
+              const observed = receiptFor(current.store, root, args.receiptId)
+              const anchor: Anchor = { ...observed, tenantId: state.project.tenantId, rootId: state.project.rootId, receiptId: args.receiptId, revision: state.revision + 1 }
+              state.project.registerAnchor(anchor.anchor)
+              current.store.appendEvent(anchorKind, anchor)
+              result = { ...result, changed: true, status: 'applied', anchor: anchor.anchor, registryVersion: anchor.revision }
+            } else {
+              const entity = preview(current.store, root, args).effect
+              if (args.operation === 'put_metadata') state.native.putMetadata({ ...entity, expectedVersion: args.expectedVersion || undefined })
+              else state.native.putView({ ...entity, purpose: detachedPolicy.purpose, constraints: detachedPolicy.constraints })
+              result = { ...result, changed: true, status: 'applied', entity: args.operation === 'put_metadata' ? state.project.getMetadata(args.path) : (() => { const { purpose, constraints, ...view } = state.project.getView(args.viewKind as ViewKind)!; return view })() }
+            }
+          }
+          current.store.appendEvent(reviewed, { key, request, result, ...identity })
+          return result
+        })
+      } finally { current.store.close() }
+    },
+  }
+  return [views, review]
+}

@@ -1,9 +1,9 @@
 /** JSON adapters around AMP registry methods; executable callbacks remain host bindings. */
 import * as amp from './runtime.mjs'
-import type { Database } from 'attention-manifest-protocol/database/service'
+import type { Database } from 'amp-legacy/database/service'
 import { canonicalJson, ERROR_CODES, fail } from '../lib/amp.mjs'
 import { AMP_DEFINITIONS } from './host.mjs'
-import type { HostComponent } from 'attention-manifest-protocol/discover'
+import type { HostComponent } from 'amp-legacy/discover'
 
 export const RegistryNames = ['skills', 'knowledge', 'protocols', 'modules', 'environments', 'concepts', 'tools', 'outlines', 'outlineKeywords', 'languages', 'tokenKinds', 'nodeKinds', 'sqlDialects', 'calibrations', 'behaviors', 'entities'] as const
 type Specialized = Exclude<typeof RegistryNames[number], 'skills' | 'knowledge' | 'protocols' | 'modules' | 'environments' | 'concepts'>

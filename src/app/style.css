@@ -1,16 +1,4 @@
 :root { font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif; color-scheme: light dark; --safe-top: 0px; --safe-right: 0px; --safe-bottom: 0px; --safe-left: 0px; }
-.notification-view { min-height: 280px; padding: 24px; }
-.notification-body, .notification-message { white-space: pre-wrap; overflow-wrap: anywhere; }
-.notification-body p { margin: 8px 0; }
-.notification-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.notification-actions:empty { display: none; }
-.notification-layer { position: fixed; z-index: 1500; width: min(440px, calc(100vw - 32px)); }
-.notification-anchor { position: fixed; width: 1px; height: 1px; pointer-events: none; }
-.notification-popover { width: min(400px, calc(100vw - 32px)); padding: 20px; max-height: calc(100vh - 32px); overflow: auto; }
-.notification-dialog, .notification-popover { border-top: 4px solid var(--notification-accent, var(--color-primary, #0f766e)); }
-[data-notification-tone="success"] { --notification-accent: #15803d; }
-[data-notification-tone="warning"] { --notification-accent: #b45309; }
-[data-notification-tone="danger"] { --notification-accent: #b91c1c; }
 * { box-sizing: border-box; }
 body { margin: 0; }
 .dashboard { min-height: 100vh; padding: calc(32px + var(--safe-top)) calc(40px + var(--safe-right)) calc(20px + var(--safe-bottom)) calc(40px + var(--safe-left)); background: var(--color-background, #f5f7f5); color: var(--color-on-surface, #1d2b26); }

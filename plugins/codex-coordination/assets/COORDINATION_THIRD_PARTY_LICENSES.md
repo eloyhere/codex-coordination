@@ -1502,7 +1502,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-## fast-xml-parser 5.11.2
+## fast-xml-parser 5.12.0
 License: MIT
 
 MIT License
@@ -1625,7 +1625,7 @@ PERFORMANCE OF THIS SOFTWARE.
 
 
 
-## is-unsafe 2.0.2
+## is-unsafe 2.0.3
 License: MIT
 
 MIT License

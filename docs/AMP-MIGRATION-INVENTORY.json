@@ -1,0 +1,961 @@
+{
+  "protocol": "0.7.8",
+  "tools": 162,
+  "summary": {
+    "native": 42,
+    "durable-submission": 3,
+    "compatibility-port": 0,
+    "unbound": 4
+  },
+  "modules": [
+    {
+      "module": "session",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_session.get",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_session.list",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_session.report_status",
+          "mutating": false,
+          "status": "native"
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "create",
+          "reason": "session creation belongs to the host"
+        },
+        {
+          "verb": "close",
+          "reason": "closing a session is a host lifecycle decision"
+        },
+        {
+          "verb": "archive",
+          "reason": "archival is a host retention decision"
+        }
+      ]
+    },
+    {
+      "module": "turn",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_turn.current",
+          "mutating": false,
+          "status": "unbound",
+          "remaining": "Bind an actual scoped host lifecycle port; plugin session identity is not Codex session state."
+        },
+        {
+          "name": "attention_manifest_protocol_turn.respond",
+          "mutating": true,
+          "status": "unbound",
+          "remaining": "Bind an actual scoped host lifecycle port; plugin session identity is not Codex session state."
+        },
+        {
+          "name": "attention_manifest_protocol_turn.clarify",
+          "mutating": true,
+          "status": "unbound",
+          "remaining": "Bind an actual scoped host lifecycle port; plugin session identity is not Codex session state."
+        },
+        {
+          "name": "attention_manifest_protocol_turn.report",
+          "mutating": true,
+          "status": "unbound",
+          "remaining": "Bind an actual scoped host lifecycle port; plugin session identity is not Codex session state."
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "create",
+          "reason": "turn boundaries are host controlled"
+        },
+        {
+          "verb": "interpret",
+          "reason": "intent interpretation is host owned"
+        },
+        {
+          "verb": "interrupt",
+          "reason": "interruption is a host/user action"
+        }
+      ]
+    },
+    {
+      "module": "intent",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_intent.get",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_intent.list",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_intent.submit_clarification",
+          "mutating": true,
+          "status": "durable-submission"
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "capture",
+          "reason": "intent capture belongs to the host"
+        },
+        {
+          "verb": "accept",
+          "reason": "acceptance is a user/host confirmation"
+        }
+      ]
+    },
+    {
+      "module": "mission",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_mission.get",
+          "mutating": false,
+          "status": "native"
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "*",
+          "reason": "mission lifecycle is host owned"
+        }
+      ]
+    },
+    {
+      "module": "goal",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_goal.get",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_goal.list",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_goal.submit_evidence",
+          "mutating": true,
+          "status": "durable-submission"
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "achieve",
+          "reason": "achievement requires independent verification"
+        },
+        {
+          "verb": "invalidate",
+          "reason": "invalidation is a host/verifier decision"
+        },
+        {
+          "verb": "revalidate",
+          "reason": "revalidation is a host/verifier decision"
+        }
+      ]
+    },
+    {
+      "module": "plan",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_plan.get",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_plan.list",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_plan.ready_tasks",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_plan.propose_draft",
+          "mutating": true,
+          "status": "native"
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "activate",
+          "reason": "activation is a host approval"
+        },
+        {
+          "verb": "complete",
+          "reason": "completion depends on verified tasks"
+        },
+        {
+          "verb": "supersede",
+          "reason": "supersede is a host planning decision"
+        }
+      ]
+    },
+    {
+      "module": "task",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_task.get",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_task.list_ready",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_task.report_progress",
+          "mutating": true,
+          "status": "native"
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "claim",
+          "reason": "claiming a task requires a host lease"
+        },
+        {
+          "verb": "accept",
+          "reason": "task acceptance is a host/verifier decision"
+        },
+        {
+          "verb": "fail",
+          "reason": "terminal failure is a host decision"
+        }
+      ]
+    },
+    {
+      "module": "action",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_action.get",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_action.list",
+          "mutating": false,
+          "status": "native"
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "start",
+          "reason": "starting an attempt needs policy, budget and a lease"
+        },
+        {
+          "verb": "settle",
+          "reason": "settlement must come from the execution chain"
+        },
+        {
+          "verb": "reconcile",
+          "reason": "reconciliation is a host responsibility"
+        }
+      ]
+    },
+    {
+      "module": "attention",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_attention.context",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_attention.get",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_attention.request_focus",
+          "mutating": true,
+          "status": "durable-submission"
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "mount",
+          "reason": "residency is attention policy"
+        },
+        {
+          "verb": "unmount",
+          "reason": "residency is attention policy"
+        },
+        {
+          "verb": "persist",
+          "reason": "retention spends budget and needs approval"
+        },
+        {
+          "verb": "associate",
+          "reason": "traversal can amplify reads and leak scope"
+        }
+      ]
+    },
+    {
+      "module": "project",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_project.rules",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_project.metadata",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_project.environment",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_project.describe_environment",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_project.configure_environment",
+          "mutating": true,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_project.put_rule",
+          "mutating": true,
+          "status": "native"
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "putMetadata",
+          "reason": "project metadata is written by the host or a plugin"
+        },
+        {
+          "verb": "putView",
+          "reason": "views are produced by the host pipeline"
+        },
+        {
+          "verb": "views",
+          "reason": "§13.5 视图渲染与脑图结构不进模型上下文"
+        },
+        {
+          "verb": "outline",
+          "reason": "§13.5 视图渲染与脑图结构不进模型上下文"
+        }
+      ]
+    },
+    {
+      "module": "workspace",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_workspace.list",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_workspace.read",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_workspace.outline",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_workspace.document_outline",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_workspace.diff",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_workspace.write",
+          "mutating": true,
+          "status": "native"
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "storage",
+          "reason": "raw storage adapters, leases and locks stay host side"
+        },
+        {
+          "verb": "writeBytes",
+          "reason": "format-aware binary writes belong to plugins"
+        }
+      ]
+    },
+    {
+      "module": "cooperation",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_cooperation.inbox",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_cooperation.send",
+          "mutating": true,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_cooperation.report_result",
+          "mutating": true,
+          "status": "native"
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "delegate",
+          "reason": "delegation creates authority and needs host approval"
+        },
+        {
+          "verb": "transfer",
+          "reason": "ownership transfer changes fencing"
+        },
+        {
+          "verb": "cancel",
+          "reason": "cancellation is a host/user decision"
+        }
+      ]
+    },
+    {
+      "module": "evidence",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_evidence.get",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_evidence.list",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_evidence.cite",
+          "mutating": false,
+          "status": "native"
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "add",
+          "reason": "evidence is created by the verification chain"
+        },
+        {
+          "verb": "revoke",
+          "reason": "revocation is a host/verifier decision"
+        }
+      ]
+    },
+    {
+      "module": "execution",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_execution.find_tools",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_execution.inspect_tool",
+          "mutating": false,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_execution.run",
+          "mutating": true,
+          "status": "native"
+        },
+        {
+          "name": "attention_manifest_protocol_execution.read_handle",
+          "mutating": false,
+          "status": "native"
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "executor",
+          "reason": "executor internals are not a tool"
+        },
+        {
+          "verb": "journal",
+          "reason": "the host owns the durable journal"
+        }
+      ]
+    },
+    {
+      "module": "budget",
+      "tier": "agent",
+      "verbs": [
+        {
+          "name": "attention_manifest_protocol_budget.remaining",
+          "mutating": false,
+          "status": "native"
+        }
+      ],
+      "withheld": [
+        {
+          "verb": "grant",
+          "reason": "budget is power and cannot be self-granted"
+        },
+        {
+          "verb": "configure",
+          "reason": "budget configuration is a host decision"
+        }
+      ]
+    },
+    {
+      "module": "workflow",
+      "tier": "hidden",
+      "verbs": [],
+      "withheld": [
+        {
+          "verb": "*",
+          "reason": "single-writer state machine, host only"
+        }
+      ]
+    },
+    {
+      "module": "policy",
+      "tier": "hidden",
+      "verbs": [],
+      "withheld": [
+        {
+          "verb": "*",
+          "reason": "authorization must stay outside the model"
+        }
+      ]
+    },
+    {
+      "module": "profession",
+      "tier": "hidden",
+      "verbs": [],
+      "withheld": [
+        {
+          "verb": "*",
+          "reason": "authority narrowing is host configured"
+        }
+      ]
+    },
+    {
+      "module": "behaviour",
+      "tier": "hidden",
+      "verbs": [],
+      "withheld": [
+        {
+          "verb": "*",
+          "reason": "publishing or revoking behavior is a governance action"
+        }
+      ]
+    },
+    {
+      "module": "capability",
+      "tier": "host",
+      "verbs": [],
+      "withheld": [
+        {
+          "verb": "*",
+          "reason": "registration and activation are host owned"
+        }
+      ]
+    },
+    {
+      "module": "manifest",
+      "tier": "host",
+      "verbs": [],
+      "withheld": [
+        {
+          "verb": "*",
+          "reason": "tool contracts and endpoint identity are host trusted"
+        }
+      ]
+    },
+    {
+      "module": "provenance",
+      "tier": "host",
+      "verbs": [],
+      "withheld": [
+        {
+          "verb": "*",
+          "reason": "receipts must come from the execution chain"
+        }
+      ]
+    },
+    {
+      "module": "receipt",
+      "tier": "host",
+      "verbs": [],
+      "withheld": [
+        {
+          "verb": "*",
+          "reason": "receipts are host written; the model may only cite evidence"
+        }
+      ]
+    },
+    {
+      "module": "verification",
+      "tier": "host",
+      "verbs": [],
+      "withheld": [
+        {
+          "verb": "*",
+          "reason": "verification authority is host owned"
+        }
+      ]
+    },
+    {
+      "module": "retrieval",
+      "tier": "host",
+      "verbs": [],
+      "withheld": [
+        {
+          "verb": "*",
+          "reason": "reached only through execution.find_tools"
+        }
+      ]
+    },
+    {
+      "module": "model",
+      "tier": "host",
+      "verbs": [],
+      "withheld": [
+        {
+          "verb": "*",
+          "reason": "the model cannot call itself as a tool"
+        }
+      ]
+    },
+    {
+      "module": "runtime",
+      "tier": "host",
+      "verbs": [],
+      "withheld": [
+        {
+          "verb": "*",
+          "reason": "the facade is exposed through execution.*"
+        }
+      ]
+    }
+  ],
+  "legacyConsumers": [
+    {
+      "path": "src/mcp/amp/api.mts",
+      "imports": [
+        "amp-legacy/database"
+      ]
+    },
+    {
+      "path": "src/mcp/amp/artifacts.mts",
+      "imports": [
+        "amp-legacy/database"
+      ]
+    },
+    {
+      "path": "src/mcp/amp/cognitive.mts",
+      "imports": [
+        "amp-legacy/control",
+        "amp-legacy/database",
+        "amp-legacy/module",
+        "amp-legacy/protocol/workspace.js"
+      ]
+    },
+    {
+      "path": "src/mcp/amp/connections.mts",
+      "imports": [
+        "amp-legacy/database",
+        "amp-legacy/module/mcp/protocol.js",
+        "amp-legacy/module/mcp/transport.js"
+      ]
+    },
+    {
+      "path": "src/mcp/amp/file-ports.mts",
+      "imports": [
+        "amp-legacy/database",
+        "amp-legacy/file"
+      ]
+    },
+    {
+      "path": "src/mcp/amp/hooks.mts",
+      "imports": [
+        "amp-legacy/database",
+        "amp-legacy/file",
+        "amp-legacy/hook"
+      ]
+    },
+    {
+      "path": "src/mcp/amp/host.mts",
+      "imports": [
+        "amp-legacy/attention/attention.js",
+        "amp-legacy/context/workspace.js",
+        "amp-legacy/control",
+        "amp-legacy/file",
+        "amp-legacy/module",
+        "amp-legacy/protocol/control.js",
+        "amp-legacy/protocol/filesystem.js",
+        "amp-legacy/protocol/global.js",
+        "amp-legacy/protocol/globalFilesystem.js",
+        "amp-legacy/protocol/workspace.js",
+        "amp-legacy/semantic",
+        "amp-legacy/types"
+      ]
+    },
+    {
+      "path": "src/mcp/amp/keys.mts",
+      "imports": [
+        "amp-legacy/database",
+        "amp-legacy/manifest"
+      ]
+    },
+    {
+      "path": "src/mcp/amp/legacy-storage.mts",
+      "imports": [
+        "amp-legacy"
+      ]
+    },
+    {
+      "path": "src/mcp/amp/registries.mts",
+      "imports": [
+        "amp-legacy/database/service",
+        "amp-legacy/discover"
+      ]
+    },
+    {
+      "path": "src/mcp/amp/retrieval.mts",
+      "imports": [
+        "amp-legacy/database",
+        "amp-legacy/semantic"
+      ]
+    },
+    {
+      "path": "src/mcp/amp/runtime.mts",
+      "imports": [
+        "amp-legacy/assignment",
+        "amp-legacy/attention",
+        "amp-legacy/authz",
+        "amp-legacy/bayes",
+        "amp-legacy/boundary",
+        "amp-legacy/concept",
+        "amp-legacy/concurrency",
+        "amp-legacy/context",
+        "amp-legacy/control",
+        "amp-legacy/cooperation",
+        "amp-legacy/database",
+        "amp-legacy/database/entity/entity.js",
+        "amp-legacy/delegate",
+        "amp-legacy/diagnosis",
+        "amp-legacy/discover",
+        "amp-legacy/environment",
+        "amp-legacy/error",
+        "amp-legacy/evaluation",
+        "amp-legacy/evidence",
+        "amp-legacy/execution",
+        "amp-legacy/file",
+        "amp-legacy/fingerprint",
+        "amp-legacy/frame",
+        "amp-legacy/global",
+        "amp-legacy/goal",
+        "amp-legacy/goal/plan.js",
+        "amp-legacy/governance",
+        "amp-legacy/hook",
+        "amp-legacy/interaction",
+        "amp-legacy/ipc",
+        "amp-legacy/kernel",
+        "amp-legacy/knowledge",
+        "amp-legacy/ledger",
+        "amp-legacy/lock",
+        "amp-legacy/manifest",
+        "amp-legacy/mission",
+        "amp-legacy/module",
+        "amp-legacy/module/mcp/client.js",
+        "amp-legacy/module/mcp/http.js",
+        "amp-legacy/naming",
+        "amp-legacy/outline",
+        "amp-legacy/outline/sqlOutline.js",
+        "amp-legacy/policy",
+        "amp-legacy/process",
+        "amp-legacy/progress",
+        "amp-legacy/protocol",
+        "amp-legacy/receipt",
+        "amp-legacy/registry",
+        "amp-legacy/runtime",
+        "amp-legacy/scan",
+        "amp-legacy/scenario",
+        "amp-legacy/search",
+        "amp-legacy/semantic",
+        "amp-legacy/session",
+        "amp-legacy/skill",
+        "amp-legacy/storage",
+        "amp-legacy/store",
+        "amp-legacy/structure",
+        "amp-legacy/syntax",
+        "amp-legacy/thread",
+        "amp-legacy/types",
+        "amp-legacy/warrant",
+        "amp-legacy/window"
+      ]
+    },
+    {
+      "path": "src/mcp/amp/schemas.mts",
+      "imports": [
+        "amp-legacy/schemas/collaboration.schema.json",
+        "amp-legacy/schemas/common.schema.json",
+        "amp-legacy/schemas/compaction.schema.json",
+        "amp-legacy/schemas/concept-compaction.schema.json",
+        "amp-legacy/schemas/concept.schema.json",
+        "amp-legacy/schemas/epistemic.schema.json",
+        "amp-legacy/schemas/federation.schema.json",
+        "amp-legacy/schemas/frame.schema.json",
+        "amp-legacy/schemas/ledger-snapshot.schema.json",
+        "amp-legacy/schemas/manifest.schema.json",
+        "amp-legacy/schemas/message.schema.json",
+        "amp-legacy/schemas/plan.schema.json",
+        "amp-legacy/schemas/receipt.schema.json",
+        "amp-legacy/schemas/social.schema.json",
+        "amp-legacy/schemas/team.schema.json",
+        "amp-legacy/schemas/verb.schema.json"
+      ]
+    },
+    {
+      "path": "src/mcp/amp/search.mts",
+      "imports": [
+        "amp-legacy/context/workspace.js",
+        "amp-legacy/database/service",
+        "amp-legacy/discover",
+        "amp-legacy/knowledge",
+        "amp-legacy/semantic"
+      ]
+    },
+    {
+      "path": "src/mcp/amp/workspace.mts",
+      "imports": [
+        "amp-legacy/context/contentStore.js",
+        "amp-legacy/context/workspace.js",
+        "amp-legacy/context/workspaceService.js",
+        "amp-legacy/file",
+        "amp-legacy/fingerprint",
+        "amp-legacy/semantic",
+        "amp-legacy/session"
+      ]
+    },
+    {
+      "path": "src/mcp/coordination/host.mts",
+      "imports": [
+        "amp-legacy/semantic",
+        "amp-legacy/session"
+      ]
+    },
+    {
+      "path": "src/mcp/lib/amp.mts",
+      "imports": [
+        "amp-legacy/semantic",
+        "amp-legacy/semantic/jsonValue.js",
+        "amp-legacy/types"
+      ]
+    },
+    {
+      "path": "src/mcp/lib/goals.mts",
+      "imports": [
+        "amp-legacy/goal",
+        "amp-legacy/types"
+      ]
+    },
+    {
+      "path": "src/mcp/lib/plans.mts",
+      "imports": [
+        "amp-legacy/goal/plan.js",
+        "amp-legacy/types"
+      ]
+    },
+    {
+      "path": "src/mcp/lib/protocol.mts",
+      "imports": [
+        "amp-legacy/ledger",
+        "amp-legacy/package.json",
+        "amp-legacy/warrant"
+      ]
+    },
+    {
+      "path": "scripts/amp-conformance.mjs",
+      "imports": [
+        "amp-legacy/package.json"
+      ]
+    },
+    {
+      "path": "scripts/build-coordination.mjs",
+      "imports": [
+        "amp-legacy",
+        "amp-legacy/${entry.name}",
+        "amp-legacy/goal/plan.js",
+        "amp-legacy/package.json"
+      ]
+    },
+    {
+      "path": "scripts/inventory-amp.mjs",
+      "imports": [
+        "amp-legacy/package.json"
+      ]
+    },
+    {
+      "path": "test/amp-control-migration.test.mjs",
+      "imports": [
+        "amp-legacy"
+      ]
+    },
+    {
+      "path": "test/amp-domains.test.mjs",
+      "imports": [
+        "amp-legacy"
+      ]
+    },
+    {
+      "path": "test/amp-host.test.mjs",
+      "imports": [
+        "amp-legacy/protocol/control.js",
+        "amp-legacy/protocol/filesystem.js",
+        "amp-legacy/protocol/global.js",
+        "amp-legacy/protocol/globalFilesystem.js",
+        "amp-legacy/protocol/workspace.js"
+      ]
+    },
+    {
+      "path": "test/protocol.test.mjs",
+      "imports": [
+        "amp-legacy/ledger",
+        "amp-legacy/semantic"
+      ]
+    }
+  ]
+}

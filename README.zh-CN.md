@@ -1,12 +1,12 @@
 # codex-coordination
 
-Agent 可调用 `coordination_notification`，在插件界面显示 snackbar、popover、dialog 或 alert，支持严重程度、位置、自动关闭和关闭按钮。参见 [通知用法](docs/NOTIFICATIONS.md)。
+插件 UI 仅保留设置：注册中心、环境、连接和密钥配置。弹窗、通知、AMP 状态行和业务台账展示已移除；后端业务工具与数据保留。`coordination_notification` 仅作为禁用展示的兼容入口。参见 [通知状态](docs/NOTIFICATIONS.md)。
 
 一个包含 **TypeScript MCP 服务、React 19 界面与十三个工作流 skill** 的 Codex 插件。服务直接从 npm 导入 **attention-manifest-protocol 0.6.3**，界面使用 **periodicity-react 0.1.15** 并保留默认 ripple 特效。
 
 **简体中文** · [English](README.md)
 
-插件提供 AMP 原有的 60 个服务工具、9 个宿主适配工具和原有 7 个协调工具，合并 24 个 coordination agent 工具及 coordination_project，并处理同名兼容后，共 **98 个工具**。注册中心、结构扫描、Elasticsearch 搜索、上下文、治理、签名、委派、连接与认知运行时直接使用 AMP 实现。界面的 **AMP 能力** 标签页调用同一组工具。完整入口与配置见 [AMP 接入说明](docs/AMP-INTEGRATION.md)。
+插件提供 AMP 原有的 60 个服务工具、9 个宿主适配工具和原有 7 个协调工具，合并 24 个 coordination agent 工具及 coordination_project，并处理同名兼容后，共 **98 个工具**。注册中心、结构扫描、Elasticsearch 搜索、上下文、治理、签名、委派、连接与认知运行时直接使用 AMP 实现。界面仅提供设置；业务工具由 agent 在会话中调用。完整入口与配置见 [AMP 接入说明](docs/AMP-INTEGRATION.md)。
 
 原有目标、计划、交接、注意帧与回执仍保存在 `.codex-coordination/ledger.json`，兼容 version 2 台账和 AMP wire tag `0.1`。AMP 原生控制和领域状态使用宿主侧 SQLite。
 
@@ -75,7 +75,7 @@ Windows 启动器会寻找 PATH、`NODE_EXE` 或 Codex 自带的 Node 运行时�
 | `coordination_handoff` | 指派、接受、开始、提交及验收交接 |
 | `coordination_check` | 审计台账或导出 AMP 快照 |
 | `coordination_protocol` | 发现 schema、校验对象、追加及列出注意帧与回执 |
-| `coordination_dashboard` | 打开 React 界面、查看记录及执行审计 |
+| `coordination_dashboard` | 打开仅包含项目配置的设置界面 |
 
 上表的旧台账模式要求传入绝对 `workspace`，界面入口也接受 `{}`。goal/plan 不带 workspace 时使用迁入的工作区绑定接口；[完整工具清单与兼容规则](docs/COORDINATION-TOOLS.md) 单独说明。AMP 原生工具先通过 `coordination_workspace` 绑定仓库，认证凭证由宿主持有。
 

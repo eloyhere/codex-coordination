@@ -1,7 +1,7 @@
 /** AMP adapter. Canonical values, hashes and cloning come from the pinned upstream runtime. */
-import { canonicalJson as ampCanonicalJson, digestOf as ampDigestOf } from 'attention-manifest-protocol/semantic'
-import { cloneJson as ampCloneJson } from 'attention-manifest-protocol/semantic/jsonValue.js'
-import type { Ref, Budget, Criterion } from 'attention-manifest-protocol/types'
+import { canonicalJson as ampCanonicalJson, digestOf as ampDigestOf } from 'amp-legacy/semantic'
+import { cloneJson as ampCloneJson } from 'amp-legacy/semantic/jsonValue.js'
+import type { Ref, Budget, Criterion } from 'amp-legacy/types'
 
 /** The protocol version this server writes and accepts. */
 export const AMP_VERSION = '0.1'

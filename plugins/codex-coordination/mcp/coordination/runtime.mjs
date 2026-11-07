@@ -100300,14 +100300,14 @@ function resolveDatabasePath(configPath, databaseName) {
   return join(home, databaseName, `${databaseName}.db`);
 }
 
-// shared-amp:attention-manifest-protocol/semantic/canonical.js
+// shared-amp:amp-legacy/semantic/canonical.js
 import { semantic as amp0 } from "../amp/runtime.mjs";
 var canonical = amp0["canonical"];
 var canonicalJson = amp0["canonicalJson"];
 var canonicalProblem = amp0["canonicalProblem"];
 var digestOf = amp0["digestOf"];
 
-// shared-amp:attention-manifest-protocol/warrant/warrant.js
+// shared-amp:amp-legacy/warrant/warrant.js
 import { warrant as amp02 } from "../amp/runtime.mjs";
 var canAuthorizeEffect = amp02["canAuthorizeEffect"];
 var classifyHypothesis = amp02["classifyHypothesis"];
@@ -100319,7 +100319,7 @@ var suggestTier = amp02["suggestTier"];
 var validateClaim = amp02["validateClaim"];
 var validateHypothesis = amp02["validateHypothesis"];
 
-// shared-amp:attention-manifest-protocol/boundary
+// shared-amp:amp-legacy/boundary
 import { boundary as amp03 } from "../amp/runtime.mjs";
 var BoundaryRejection = amp03["BoundaryRejection"];
 var RefTable = amp03["RefTable"];
@@ -100327,7 +100327,7 @@ var frameFrom = amp03["frameFrom"];
 var isId = amp03["isId"];
 var parseToolCall = amp03["parseToolCall"];
 
-// shared-amp:attention-manifest-protocol/manifest/sign.js
+// shared-amp:amp-legacy/manifest/sign.js
 import { manifest as amp04 } from "../amp/runtime.mjs";
 var KeyRegistry = amp04["KeyRegistry"];
 var contentDigest = amp04["contentDigest"];
@@ -100336,7 +100336,7 @@ var signManifest = amp04["signManifest"];
 var verifyManifest = amp04["verifyManifest"];
 var verifyWithRegistry = amp04["verifyWithRegistry"];
 
-// shared-amp:attention-manifest-protocol/ledger/checkpoint.js
+// shared-amp:amp-legacy/ledger/checkpoint.js
 import { ledger as amp05 } from "../amp/runtime.mjs";
 var CheckpointDomain = amp05["CheckpointDomain"];
 var checkpointBody = amp05["checkpointBody"];
@@ -100844,7 +100844,7 @@ function validatePlan(plan) {
 var GENESIS = `sha256:${"0".repeat(64)}`;
 var Encoder3 = new TextEncoder();
 
-// shared-amp:attention-manifest-protocol/ledger/persistence.js
+// shared-amp:amp-legacy/ledger/persistence.js
 import { ledger as amp06 } from "../amp/runtime.mjs";
 var exportLedger = amp06["exportLedger"];
 var restoreLedger = amp06["restoreLedger"];
@@ -108274,16 +108274,16 @@ function goalContent(content) {
   return text5;
 }
 
-// shared-amp:attention-manifest-protocol/mission
+// shared-amp:amp-legacy/mission
 import { mission as amp07 } from "../amp/runtime.mjs";
 var MissionQueue = amp07["MissionQueue"];
 
-// shared-amp:attention-manifest-protocol/goal
+// shared-amp:amp-legacy/goal
 import { goal as amp08 } from "../amp/runtime.mjs";
 var createGoalLifecycle = amp08["createGoalLifecycle"];
 var transitionGoal = amp08["transitionGoal"];
 
-// shared-amp:attention-manifest-protocol/goal/plan.js
+// shared-amp:amp-legacy/goal/plan.js
 import { goalPlan as amp09 } from "../amp/runtime.mjs";
 var validatePlanInput = amp09["validatePlanInput"];
 
@@ -121722,7 +121722,7 @@ function boundedOption(value, hardCap, minimum, name) {
   return Math.min(value, hardCap);
 }
 
-// shared-amp:attention-manifest-protocol/file
+// shared-amp:amp-legacy/file
 import { file as amp010 } from "../amp/runtime.mjs";
 var ByteLineIndex = amp010["ByteLineIndex"];
 var DefaultOutlineKeywords = amp010["DefaultOutlineKeywords"];
@@ -139006,10 +139006,32 @@ var SQL_STRICT_EXTRA = [
 var SQL_STRICT_PATTERNS = [...sql_default, ...SQL_STRICT_EXTRA];
 var sql_strict_default = SQL_STRICT_PATTERNS;
 
+// node_modules/is-unsafe/src/util/decode-entities.js
+var NAMED = Object.freeze({
+  colon: ":",
+  Tab: "	",
+  NewLine: "\n"
+});
+var ENTITY_RE = /&(?:#[xX]0*([0-9a-fA-F]{1,6});?|#0*([0-9]{1,7});?|([a-zA-Z][a-zA-Z0-9]{1,15});)/g;
+function decodeEntities(input) {
+  if (input.indexOf("&") === -1) return input;
+  return input.replace(ENTITY_RE, (match, hex, dec, name) => {
+    if (name !== void 0) {
+      return Object.prototype.hasOwnProperty.call(NAMED, name) ? NAMED[name] : match;
+    }
+    const cp = hex !== void 0 ? parseInt(hex, 16) : parseInt(dec, 10);
+    if (!Number.isFinite(cp) || cp > 1114111) return match;
+    return String.fromCodePoint(cp);
+  });
+}
+
 // node_modules/is-unsafe/src/index.js
 html_default.label = "HTML";
 xml_default.label = "XML";
 svg_default.label = "SVG";
+html_default.decodeEntities = true;
+xml_default.decodeEntities = true;
+svg_default.decodeEntities = true;
 sql_default.label = "SQL";
 sql_strict_default.label = "SQL-STRICT";
 shell_default.label = "SHELL";
@@ -139060,10 +139082,16 @@ function normalise(context2) {
   if (Array.isArray(context2[0])) return { lists: context2, regex: null };
   return { lists: [context2], regex: null };
 }
+function decodedCopy(value, list) {
+  if (!list.decodeEntities) return null;
+  const decoded = decodeEntities(value);
+  return decoded === value ? null : decoded;
+}
 function matchList(value, list) {
   const label = list.label ?? "CUSTOM";
+  const decoded = decodedCopy(value, list);
   for (const rule of list) {
-    if (rule.pattern.test(value)) {
+    if (rule.pattern.test(value) || decoded !== null && rule.pattern.test(decoded)) {
       return { context: label, id: rule.id, description: rule.description, pattern: rule.pattern };
     }
   }
@@ -139268,7 +139296,14 @@ function buildAttributesMap(attrStr, jPath, tagName, force = false) {
   }
 }
 var parseXml = function(xmlData) {
-  xmlData = xmlData.replace(/\r\n?/g, "\n");
+  const options = this.options;
+  const crlfPositions = options.captureMetaData ? [] : void 0;
+  xmlData = xmlData.replace(/\r\n?/g, options.captureMetaData ? (newline, index) => {
+    if (newline.length === 2) {
+      crlfPositions.push(index - crlfPositions.length);
+    }
+    return "\n";
+  } : "\n");
   const xmlObj = new XmlNode("!xml");
   let currentNode = xmlObj;
   let textData = "";
@@ -139277,7 +139312,6 @@ var parseXml = function(xmlData) {
   this.entityExpansionCount = 0;
   this.currentExpandedLength = 0;
   this.doctypefound = false;
-  const options = this.options;
   const docTypeReader = new DocTypeReader(options.processEntities);
   const xmlLen = xmlData.length;
   for (let i2 = 0; i2 < xmlLen; i2++) {
@@ -139309,7 +139343,7 @@ var parseXml = function(xmlData) {
         this.isCurrentNodeStopNode = false;
         currentNode = this.tagsNodeStack.pop() || xmlObj;
         if (options.captureMetaData && currentNode) {
-          currentNode.addEndIndex(closeIndex + 1);
+          currentNode.addEndIndex(getOriginalIndex(closeIndex + 1, crlfPositions));
         }
         textData = "";
         i2 = closeIndex;
@@ -139330,9 +139364,10 @@ var parseXml = function(xmlData) {
           if (tagData.tagName !== tagData.tagExp && tagData.attrExpPresent && options.ignoreAttributes !== true) {
             childNode[":@"] = attsMap;
           }
-          this.addChild(currentNode, childNode, this.readonlyMatcher, i2);
+          const startIndex = options.captureMetaData ? getOriginalIndex(i2, crlfPositions) : i2;
+          this.addChild(currentNode, childNode, this.readonlyMatcher, startIndex);
           if (options.captureMetaData) {
-            currentNode.addEndIndex(tagData.closeIndex + 2);
+            currentNode.addEndIndex(getOriginalIndex(tagData.closeIndex + 2, crlfPositions));
           }
         }
         i2 = tagData.closeIndex + 1;
@@ -139414,7 +139449,7 @@ var parseXml = function(xmlData) {
         if (tagName !== xmlObj.tagname) {
           this.isCurrentNodeStopNode = this.isItStopNode();
         }
-        const startIndex = i2;
+        const startIndex = options.captureMetaData ? getOriginalIndex(i2, crlfPositions) : i2;
         if (this.isCurrentNodeStopNode) {
           let tagContent = "";
           if (isSelfClosing) {
@@ -139436,7 +139471,7 @@ var parseXml = function(xmlData) {
           this.isCurrentNodeStopNode = false;
           this.addChild(currentNode, childNode, this.readonlyMatcher, startIndex);
           if (options.captureMetaData) {
-            currentNode.addEndIndex(i2 + 1);
+            currentNode.addEndIndex(getOriginalIndex(i2 + 1, crlfPositions));
           }
         } else {
           if (isSelfClosing) {
@@ -139447,7 +139482,7 @@ var parseXml = function(xmlData) {
             }
             this.addChild(currentNode, childNode, this.readonlyMatcher, startIndex);
             if (options.captureMetaData) {
-              currentNode.addEndIndex(closeIndex + 1);
+              currentNode.addEndIndex(getOriginalIndex(closeIndex + 1, crlfPositions));
             }
             this.matcher.pop();
             this.isCurrentNodeStopNode = false;
@@ -139458,7 +139493,7 @@ var parseXml = function(xmlData) {
             }
             this.addChild(currentNode, childNode, this.readonlyMatcher, startIndex);
             if (options.captureMetaData) {
-              currentNode.addEndIndex(result2.closeIndex + 1);
+              currentNode.addEndIndex(getOriginalIndex(result2.closeIndex + 1, crlfPositions));
             }
             this.matcher.pop();
             this.isCurrentNodeStopNode = false;
@@ -139486,6 +139521,16 @@ var parseXml = function(xmlData) {
   }
   return xmlObj.child;
 };
+function getOriginalIndex(index, crlfPositions) {
+  let low = 0;
+  let high = crlfPositions.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (crlfPositions[middle] < index) low = middle + 1;
+    else high = middle;
+  }
+  return index + low;
+}
 function addChild(currentNode, childNode, matcher2, startIndex) {
   if (!this.options.captureMetaData) startIndex = void 0;
   const jPathOrMatcher = this.options.jPath ? matcher2.toString() : matcher2;
@@ -139612,6 +139657,8 @@ function readTagExp(xmlData, i2, removeNSPrefix, closingChar = ">") {
 function readStopNodeData(xmlData, tagName, i2) {
   const startIndex = i2;
   let openTagCount = 1;
+  let lenient = false;
+  let nextGt = -1;
   const xmllen = xmlData.length;
   for (; i2 < xmllen; i2++) {
     if (xmlData[i2] === "<") {
@@ -139639,13 +139686,27 @@ function readStopNodeData(xmlData, tagName, i2) {
         const closeIndex = findClosingIndex(xmlData, "]]>", i2, "StopNode is not closed.") - 2;
         i2 = closeIndex;
       } else {
-        const tagData = readTagExp(xmlData, i2, false);
+        const tagData = lenient ? void 0 : readTagExp(xmlData, i2, false);
         if (tagData) {
-          const openTagName = tagData && tagData.tagName;
+          const openTagName = tagData.tagName;
           if (openTagName === tagName && tagData.tagExp[tagData.tagExp.length - 1] !== "/") {
             openTagCount++;
           }
           i2 = tagData.closeIndex;
+        } else {
+          lenient = true;
+          if (nextGt < i2) {
+            nextGt = xmlData.indexOf(">", i2);
+            if (nextGt === -1) return;
+          }
+          const nextLt = xmlData.indexOf("<", i2 + 1);
+          if (nextLt === -1 || nextLt > nextGt) {
+            const exp = xmlData.substring(i2 + 1, nextGt);
+            const sep5 = exp.search(/\s/);
+            const name = sep5 === -1 ? exp : exp.substring(0, sep5);
+            if (name === tagName && exp[exp.length - 1] !== "/") openTagCount++;
+            i2 = nextGt;
+          }
         }
       }
     }

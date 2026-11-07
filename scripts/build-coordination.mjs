@@ -1,5 +1,5 @@
 import { build } from 'esbuild'
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, renameSync, unlinkSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -7,14 +7,14 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 const root = fileURLToPath(new URL('../', import.meta.url))
-const ampRoot = dirname(fileURLToPath(import.meta.resolve('attention-manifest-protocol/package.json')))
-const ampNamespaces = await Promise.all(readdirSync(join(ampRoot, 'lib'), { withFileTypes: true }).filter(entry => entry.isDirectory() && existsSync(join(ampRoot, 'lib', entry.name, 'index.js'))).map(async entry => ({ name: entry.name === 'global' ? 'globalApi' : entry.name === 'module' ? 'moduleApi' : entry.name, exports: await import(`attention-manifest-protocol/${entry.name}`) })))
-ampNamespaces.push({ name: 'goalPlan', exports: await import('attention-manifest-protocol/goal/plan.js') })
+const ampRoot = dirname(fileURLToPath(import.meta.resolve('amp-legacy/package.json')))
+const ampNamespaces = await Promise.all(readdirSync(join(ampRoot, 'lib'), { withFileTypes: true }).filter(entry => entry.isDirectory() && existsSync(join(ampRoot, 'lib', entry.name, 'index.js'))).map(async entry => ({ name: entry.name === 'global' ? 'globalApi' : entry.name === 'module' ? 'moduleApi' : entry.name, exports: await import(`amp-legacy/${entry.name}`) })))
+ampNamespaces.push({ name: 'goalPlan', exports: await import('amp-legacy/goal/plan.js') })
 const output = resolve(root, 'plugins/codex-coordination/mcp/coordination/runtime.mjs')
 execFileSync(process.execPath, [resolve(root, 'scripts/inventory-coordination.mjs')], { stdio: 'inherit' })
 mkdirSync(resolve(output, '..'), { recursive: true })
-const built = await build({ entryPoints: [resolve(root, 'vendor/coordination-runtime/entry.ts')], outfile: output, bundle: true, platform: 'node', format: 'esm', target: 'node24', metafile: true, legalComments: 'eof', plugins: [{ name: 'shared-npm-amp', setup(context) {
-  context.onResolve({ filter: /^attention-manifest-protocol(?:\/.*)?$/ }, args => ({ path: args.path, namespace: 'shared-amp' }))
+const built = await build({ entryPoints: [resolve(root, 'vendor/coordination-runtime/entry.ts')], outfile: output, write: false, bundle: true, platform: 'node', format: 'esm', target: 'node24', metafile: true, legalComments: 'eof', plugins: [{ name: 'shared-npm-amp', setup(context) {
+  context.onResolve({ filter: /^(?:amp-legacy|attention-manifest-protocol)(?:\/.*)?$/ }, args => ({ path: args.path.replace('attention-manifest-protocol', 'amp-legacy'), namespace: 'shared-amp' }))
   context.onResolve({ filter: /^\.\.\/amp\/runtime\.mjs$/ }, args => args.namespace === 'shared-amp' ? { path: args.path, external: true } : undefined)
   context.onLoad({ filter: /.*/, namespace: 'shared-amp' }, async args => {
     const values = await import(args.path)
@@ -33,6 +33,15 @@ const built = await build({ entryPoints: [resolve(root, 'vendor/coordination-run
     return { path: resolve(root, `vendor/coordination-runtime/fs-${args.path.endsWith('/promises') ? 'async' : 'sync'}.ts`) }
   })
 } }], banner: { js: '// Generated from vendor/coordination-runtime. Do not edit.\nimport {createRequire as __createRequire} from "node:module";const require=__createRequire(import.meta.url);' } })
+// Windows may keep the previous bundle memory-mapped. Preserve unchanged
+// outputs and atomically replace changed bytes, matching the main server build.
+for (const builtFile of built.outputFiles) {
+  const bytes = Buffer.from(builtFile.contents)
+  if (existsSync(builtFile.path) && readFileSync(builtFile.path).equals(bytes)) continue
+  const temporary = builtFile.path + '.tmp-' + process.pid
+  try { writeFileSync(temporary, bytes); renameSync(temporary, builtFile.path) }
+  finally { if (existsSync(temporary)) unlinkSync(temporary) }
+}
 const packages = new Map()
 for (const input of Object.keys(built.metafile.inputs)) {
   if (!input.includes('node_modules')) continue

@@ -16,3 +16,7 @@ Thumbs.db
 *.log
 playwright-report/
 *.tgz
+/.codex-coordination/
+
+# AMP runtime data written by deepseek-coordination
+.deepseek-coordination/

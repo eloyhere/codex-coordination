@@ -76,7 +76,7 @@ function option(name) {
 
 const keep = args.includes('--keep')
 const verbose = args.includes('--verbose')
-const fallback = dirname(fileURLToPath(import.meta.resolve('attention-manifest-protocol/package.json')))
+const fallback = dirname(fileURLToPath(import.meta.resolve('amp-legacy/package.json')))
 const ampDir = resolve(option('--amp') ?? process.env.AMP_PACKAGE_DIR ?? fallback)
 const schemaDir = join(ampDir, 'docs', 'schemas')
 const referenceCanonical = join(ampDir, 'lib', 'semantic', 'canonical.js')

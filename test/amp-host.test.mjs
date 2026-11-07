@@ -4,12 +4,12 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AmpHost, AMP_DEFINITIONS } from '../plugins/codex-coordination/mcp/amp/host.mjs'
-import { syntax } from '../plugins/codex-coordination/mcp/amp/runtime.mjs'
-import { workspaceToolDefinitions } from 'attention-manifest-protocol/protocol/workspace.js'
-import { globalToolDefinitions } from 'attention-manifest-protocol/protocol/global.js'
-import { filesystemToolDefinitions } from 'attention-manifest-protocol/protocol/filesystem.js'
-import { globalFilesystemToolDefinitions } from 'attention-manifest-protocol/protocol/globalFilesystem.js'
-import { controlToolDefinitions } from 'attention-manifest-protocol/protocol/control.js'
+import { syntax, database, semantic } from '../plugins/codex-coordination/mcp/amp/runtime.mjs'
+import { workspaceToolDefinitions } from 'amp-legacy/protocol/workspace.js'
+import { globalToolDefinitions } from 'amp-legacy/protocol/global.js'
+import { filesystemToolDefinitions } from 'amp-legacy/protocol/filesystem.js'
+import { globalFilesystemToolDefinitions } from 'amp-legacy/protocol/globalFilesystem.js'
+import { controlToolDefinitions } from 'amp-legacy/protocol/control.js'
 
 function fixture(t) {
   const directory = mkdtempSync(join(tmpdir(), 'codex-amp-host-'))
@@ -26,6 +26,27 @@ test('all 60 canonical tool definitions preserve the published AMP contracts', (
   assert.equal(AMP_DEFINITIONS.length, 60)
   assert.deepEqual(AMP_DEFINITIONS, original)
   assert.equal(new Set(original.map(tool => tool.name)).size, original.length)
+})
+
+test('host migrates only the selected project legacy artifacts and keeps later writes local across switches', async t => {
+  const { host, workspace, directory } = fixture(t)
+  const id = `workspace.${semantic.digestOf(workspace).slice(7, 39)}`
+  mkdirSync(join(directory, 'workspaces'))
+  const sourcePath = join(directory, 'workspaces', id + '.sqlite')
+  const source = new database.Database(sourcePath)
+  const artifact = { amp: '0.1', kind: 'receipt', id: 'old-receipt', at: '2026-11-03T00:00:00Z', op: 'act', outcome: 'success', usage: {} }
+  source.objectService.put('amp-artifact.receipt', artifact.id, artifact, artifact.at)
+  source.close()
+  const before = readFileSync(sourcePath)
+  await host.select(workspace)
+  assert.equal((await host.adapter('artifacts', { action: 'get', kind: 'receipt', id: artifact.id })).artifact.id, artifact.id)
+  await host.adapter('artifacts', { action: 'record', artifact: { ...artifact, id: 'new-local-receipt' } })
+  const other = join(directory, 'other'); mkdirSync(other)
+  await host.select(other)
+  await assert.rejects(host.adapter('artifacts', { action: 'get', kind: 'receipt', id: artifact.id }), /Unknown recorded/)
+  await host.select(workspace)
+  assert.equal((await host.adapter('artifacts', { action: 'get', kind: 'receipt', id: 'new-local-receipt' })).artifact.id, 'new-local-receipt')
+  assert.deepEqual(readFileSync(sourcePath), before)
 })
 
 test('host binds sessions, preserves filesystem CAS and rejects forged scope and escaping paths', async t => {

@@ -1,7 +1,7 @@
 /** Host-owned Ed25519 keys; all signing and verification use AMP implementations. */
 import { manifest, governance, protocol, ledger } from './runtime.mjs'
-import type { Database } from 'attention-manifest-protocol/database'
-import type { KeyPair } from 'attention-manifest-protocol/manifest'
+import type { Database } from 'amp-legacy/database'
+import type { KeyPair } from 'amp-legacy/manifest'
 import { ERROR_CODES, fail } from '../lib/amp.mjs'
 
 const operations: Record<string, Record<string, Function>> = {

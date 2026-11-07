@@ -186,7 +186,7 @@ async function main() {
     })
     assertEqual(initialize.result?.protocolVersion, '2025-06-18', 'initialize echoes a supported protocol version')
     assertEqual(initialize.result?.serverInfo?.name, 'codex-coordination', 'initialize advertises the server name')
-    assertEqual(initialize.result?.serverInfo?.version, '0.5.1', 'initialize advertises the AMP-aware version')
+    assertEqual(initialize.result?.serverInfo?.version, '0.6.3', 'initialize advertises the AMP-aware version')
     assertEqual(initialize.result?.capabilities?.tools !== undefined, true, 'initialize advertises the tools capability')
     assert(typeof initialize.result?.instructions === 'string' && initialize.result.instructions.includes('workspace'), 'initialize explains the workspace requirement')
     wire.notify('notifications/initialized')
@@ -196,7 +196,7 @@ async function main() {
 
     const list = await wire.request('tools/list')
     const tools = list.result?.tools ?? []
-    assertEqual(tools.length, 98, 'coordination and canonical AMP tools are registered')
+    assertEqual(tools.length, 163, 'coordination and canonical AMP tools are registered')
     assertEqual(tools.map((tool) => tool.name).sort(), [...new Set([
       'coordination_check',
       'coordination_dashboard',
@@ -214,6 +214,35 @@ async function main() {
       'coordination_connections',
       'coordination_hooks',
       'coordination_runtime',
+      'attention_manifest_protocol_discover',
+      'attention_manifest_protocol_surface',
+      'attention_manifest_protocol_goal.get', 'attention_manifest_protocol_goal.list',
+      'attention_manifest_protocol_plan.get', 'attention_manifest_protocol_plan.list',
+      'attention_manifest_protocol_workspace.list', 'attention_manifest_protocol_workspace.read', 'attention_manifest_protocol_workspace.outline',
+      'attention_manifest_protocol_execution.inspect_tool', 'attention_manifest_protocol_execution.find_tools',
+      'attention_manifest_protocol_plan.propose_draft', 'attention_manifest_protocol_intent.submit_clarification',
+      'attention_manifest_protocol_goal.submit_evidence', 'attention_manifest_protocol_attention.request_focus',
+      'attention_manifest_protocol_submissions',
+      'attention_manifest_protocol_migration',
+      'attention_manifest_protocol_workflow_scope', 'attention_manifest_protocol_mission.get',
+      'attention_manifest_protocol_workflow_review', 'attention_manifest_protocol_workflow_cancel_review', 'attention_manifest_protocol_workflow_acceptance_review', 'attention_manifest_protocol_governance', 'attention_manifest_protocol_governance_review', 'attention_manifest_protocol_project_views', 'attention_manifest_protocol_project_review', 'attention_manifest_protocol_workflow_reconciliation_review', 'attention_manifest_protocol_evidence_lifecycle_review', 'attention_manifest_protocol_receipt_evaluation',
+      'attention_manifest_protocol_execution.run', 'attention_manifest_protocol_execution.read_handle', 'attention_manifest_protocol_budget.remaining',
+      'attention_manifest_protocol_evidence.get', 'attention_manifest_protocol_evidence.list', 'attention_manifest_protocol_evidence.cite', 'attention_manifest_protocol_evidence_review',
+      'attention_manifest_protocol_workspace.document_outline', 'attention_manifest_protocol_workspace.diff',
+      'attention_manifest_protocol_codex_sync',
+      'attention_manifest_protocol_session.get', 'attention_manifest_protocol_session.list', 'attention_manifest_protocol_session.report_status',
+      'attention_manifest_protocol_workspace.write', 'attention_manifest_protocol_replace',
+      'attention_manifest_protocol_cooperation.inbox', 'attention_manifest_protocol_cooperation.send', 'attention_manifest_protocol_cooperation.report_result',
+      'attention_manifest_protocol_cooperation_review', 'attention_manifest_protocol_submission_review',
+      'attention_manifest_protocol_task.report_progress',
+      'attention_manifest_protocol_attention.get', 'attention_manifest_protocol_attention.context',
+      'attention_manifest_protocol_intent.get', 'attention_manifest_protocol_intent.list',
+      'attention_manifest_protocol_task.get', 'attention_manifest_protocol_task.list_ready',
+      'attention_manifest_protocol_action.get', 'attention_manifest_protocol_action.list',
+      'attention_manifest_protocol_plan.ready_tasks',
+      'attention_manifest_protocol_project.rules', 'attention_manifest_protocol_project.metadata',
+      'attention_manifest_protocol_project.environment', 'attention_manifest_protocol_project.describe_environment',
+      'attention_manifest_protocol_project.configure_environment', 'attention_manifest_protocol_project.put_rule',
       ...AMP_DEFINITIONS.map(tool => tool.name),
       ...COORDINATION_CATALOG.map(tool => tool.name), 'coordination_project',
     ])].sort(), 'all documented tool names are exposed')

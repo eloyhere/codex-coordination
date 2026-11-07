@@ -8,8 +8,8 @@ import { file } from '../amp/runtime.mjs'
 import { processEnvironment } from '../amp/config.mjs'
 import { requestHostApproval } from '../amp/host-client.mjs'
 import { ERROR_CODES, fail } from '../lib/amp.mjs'
-import type { SessionDescriptor } from 'attention-manifest-protocol/session'
-import { digestOf } from 'attention-manifest-protocol/semantic'
+import type { SessionDescriptor } from 'amp-legacy/session'
+import { digestOf } from 'amp-legacy/semantic'
 
 export class HostCoordination {
   private runtime: ReturnType<typeof createCoordination>

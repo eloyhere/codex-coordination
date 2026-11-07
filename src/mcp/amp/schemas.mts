@@ -1,20 +1,20 @@
 // Generated from the published AMP schemas by scripts/inventory-amp.mjs.
-import s0 from 'attention-manifest-protocol/schemas/collaboration.schema.json' with { type: 'json' }
-import s1 from 'attention-manifest-protocol/schemas/common.schema.json' with { type: 'json' }
-import s2 from 'attention-manifest-protocol/schemas/compaction.schema.json' with { type: 'json' }
-import s3 from 'attention-manifest-protocol/schemas/concept-compaction.schema.json' with { type: 'json' }
-import s4 from 'attention-manifest-protocol/schemas/concept.schema.json' with { type: 'json' }
-import s5 from 'attention-manifest-protocol/schemas/epistemic.schema.json' with { type: 'json' }
-import s6 from 'attention-manifest-protocol/schemas/federation.schema.json' with { type: 'json' }
-import s7 from 'attention-manifest-protocol/schemas/frame.schema.json' with { type: 'json' }
-import s8 from 'attention-manifest-protocol/schemas/ledger-snapshot.schema.json' with { type: 'json' }
-import s9 from 'attention-manifest-protocol/schemas/manifest.schema.json' with { type: 'json' }
-import s10 from 'attention-manifest-protocol/schemas/message.schema.json' with { type: 'json' }
-import s11 from 'attention-manifest-protocol/schemas/plan.schema.json' with { type: 'json' }
-import s12 from 'attention-manifest-protocol/schemas/receipt.schema.json' with { type: 'json' }
-import s13 from 'attention-manifest-protocol/schemas/social.schema.json' with { type: 'json' }
-import s14 from 'attention-manifest-protocol/schemas/team.schema.json' with { type: 'json' }
-import s15 from 'attention-manifest-protocol/schemas/verb.schema.json' with { type: 'json' }
+import s0 from 'amp-legacy/schemas/collaboration.schema.json' with { type: 'json' }
+import s1 from 'amp-legacy/schemas/common.schema.json' with { type: 'json' }
+import s2 from 'amp-legacy/schemas/compaction.schema.json' with { type: 'json' }
+import s3 from 'amp-legacy/schemas/concept-compaction.schema.json' with { type: 'json' }
+import s4 from 'amp-legacy/schemas/concept.schema.json' with { type: 'json' }
+import s5 from 'amp-legacy/schemas/epistemic.schema.json' with { type: 'json' }
+import s6 from 'amp-legacy/schemas/federation.schema.json' with { type: 'json' }
+import s7 from 'amp-legacy/schemas/frame.schema.json' with { type: 'json' }
+import s8 from 'amp-legacy/schemas/ledger-snapshot.schema.json' with { type: 'json' }
+import s9 from 'amp-legacy/schemas/manifest.schema.json' with { type: 'json' }
+import s10 from 'amp-legacy/schemas/message.schema.json' with { type: 'json' }
+import s11 from 'amp-legacy/schemas/plan.schema.json' with { type: 'json' }
+import s12 from 'amp-legacy/schemas/receipt.schema.json' with { type: 'json' }
+import s13 from 'amp-legacy/schemas/social.schema.json' with { type: 'json' }
+import s14 from 'amp-legacy/schemas/team.schema.json' with { type: 'json' }
+import s15 from 'amp-legacy/schemas/verb.schema.json' with { type: 'json' }
 export const artifactSchemas: Record<string, any> = {
   'collaboration.schema.json': s0,
   'common.schema.json': s1,

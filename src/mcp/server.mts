@@ -38,7 +38,7 @@ const argumentsValidator = new Ajv2020({ allErrors: true, strict: false, allowUn
 const argumentChecks = new Map<string, ReturnType<typeof argumentsValidator.compile>>()
 
 /** Advertised server identity. */
-const SERVER_INFO = Object.freeze({ name: 'codex-coordination', version: '0.5.1' })
+const SERVER_INFO = Object.freeze({ name: 'codex-coordination', version: '0.6.3' })
 
 /** Protocol revisions this server speaks, newest first. */
 const SUPPORTED_PROTOCOLS = Object.freeze(['2025-06-18', '2025-03-26', '2024-11-05'])
@@ -196,7 +196,7 @@ async function dispatch(request: Record<string, unknown>) {
       send({ jsonrpc: '2.0', id, result: await callTool(request.params) })
       return
     case 'resources/list':
-      if (!isNotification) send({ jsonrpc: '2.0', id, result: { resources: [{ uri: DASHBOARD_URI, name: 'Coordination dashboard', mimeType: 'text/html;profile=mcp-app' }] } })
+      if (!isNotification) send({ jsonrpc: '2.0', id, result: { resources: [{ uri: DASHBOARD_URI, name: 'AMP settings', mimeType: 'text/html;profile=mcp-app' }] } })
       return
     case 'resources/read': {
       if (isNotification) return
@@ -206,7 +206,7 @@ async function dispatch(request: Record<string, unknown>) {
         send({ jsonrpc: '2.0', id, result: { contents: [{ uri: DASHBOARD_URI, mimeType: 'text/html;profile=mcp-app', text,
           _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] }, prefersBorder: false }, 'openai/ui': { preferredDisplayMode: 'fullscreen', availableDisplayModes: ['inline', 'fullscreen'] } },
         }] } })
-      } catch { send(errorResponse(id, -32603, 'dashboard build is missing; run npm run build')) }
+      } catch { send(errorResponse(id, -32603, 'settings UI build is missing; run npm run build')) }
       return
     }
     case 'resources/templates/list':

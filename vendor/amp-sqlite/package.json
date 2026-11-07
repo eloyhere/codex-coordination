@@ -1,0 +1,77 @@
+{
+  "name": "attention-manifest-protocol",
+  "version": "0.7.1",
+  "files": [
+    "lib",
+    "README.md",
+    "README.zh-CN.md",
+    "CHANGELOG.md",
+    "CHANGELOG.zh-CN.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "private": false,
+  "description": "A metacognitive protocol for agent attention and warrant: signed manifests, attention frames with explicit exclusions, receipts, T0-T4 evidence tiers, MCP execution, federation, persistence, agent governance (manifests, credentials, budgets, workflows) and multi-agent delegation.",
+  "keywords": [
+    "agent-protocol",
+    "attention",
+    "metacognition",
+    "context-engineering",
+    "mcp",
+    "a2a",
+    "provenance",
+    "multi-agent",
+    "governance"
+  ],
+  "license": "Apache-2.0",
+  "author": "Eloy Kim",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json",
+    "./*.js": {
+      "types": "./lib/*.d.ts",
+      "default": "./lib/*.js"
+    },
+    "./*": {
+      "types": "./lib/*/index.d.ts",
+      "default": "./lib/*/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "build:lib": "tsc -p tsconfig.build.json && node tools/rewriteDeclarationExtensions.ts",
+    "check:architecture": "tsc -p tsconfig.architecture.json",
+    "test:architecture": "node tools/architectureTests.ts",
+    "scenario": "node --test src/scenario/agentScenario.test.ts",
+    "boundary": "node --test \"src/scenario/*.test.ts\"",
+    "demo:architecture": "node tools/architectureDemo.ts",
+    "prebuild:lib": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build:lib"
+  },
+  "devDependencies": {
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "^26.6.5",
+    "@typescript-eslint/utils": "^8.72.0",
+    "eslint": "^10.13.0",
+    "jiti": "^2.7.0",
+    "prettier": "^3.9.10",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.0",
+    "vite": "^8.3.4"
+  },
+  "dependencies": {
+    "@elastic/elasticsearch": "^9.5.1",
+    "semantic-typescript": "^2.0.0"
+  }
+}

@@ -3,8 +3,8 @@
  * reviewed in deepseek-coordination/src/host/{tools,toolCatalog}.ts.
  */
 import { randomUUID } from 'node:crypto'
-import { digestOf } from 'attention-manifest-protocol/semantic'
-import type { Database } from 'attention-manifest-protocol/database'
+import { digestOf } from 'amp-legacy/semantic'
+import type { Database } from 'amp-legacy/database'
 import type { ToolDefinition } from '../lib/tools.mjs'
 import { ERROR_CODES, fail } from '../lib/amp.mjs'
 import { advertisedSchema } from '../coordination/schema.mjs'

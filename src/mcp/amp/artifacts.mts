@@ -1,5 +1,5 @@
 import { ledger, semantic } from './runtime.mjs'
-import type { Database } from 'attention-manifest-protocol/database'
+import type { Database } from 'amp-legacy/database'
 import { SCHEMAS, requireArtifact } from '../lib/protocol.mjs'
 import { ERROR_CODES, fail } from '../lib/amp.mjs'
 const ledgerArrays: Record<string, string> = { event: 'events', frame: 'frames', receipt: 'receipts', claim: 'claims', hypothesis: 'hypotheses', unknown: 'unknowns', goal: 'goals', plan: 'plans' }

@@ -1,5 +1,5 @@
-import { validatePlanInput } from 'attention-manifest-protocol/goal/plan.js'
-import type { Plan, PlanTask, PlanMonitor } from 'attention-manifest-protocol/types'
+import { validatePlanInput } from 'amp-legacy/goal/plan.js'
+import type { Plan, PlanTask, PlanMonitor } from 'amp-legacy/types'
 /**
  * Plans: bounded task graphs attached to a goal.
  *

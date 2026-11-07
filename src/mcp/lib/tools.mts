@@ -48,7 +48,9 @@ import { buildStatus } from './status.mjs'
 import { chainEntries, ledgerPath, peekState, resolveWorkspace, snapshotOf, verifyChain, withLedger } from './store.mjs'
 import { SCHEMAS, schemaFor, requireArtifact, validateArtifact } from './protocol.mjs'
 import { DASHBOARD_URI, dashboardData, protocolInfo } from './dashboard.mjs'
+import { settingsView, withSettingsWorkspaceGuard } from './settings.mjs'
 import { AMP_TOOLS, ampHost } from '../amp/host.mjs'
+import { withAmpSurface } from '../amp/surface.mjs'
 import { withCoordinationTools } from '../coordination/tools.mjs'
 
 export interface ToolDefinition {
@@ -600,19 +602,19 @@ const BASE_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'coordination_dashboard',
-    title: 'Coordination',
-    description: 'Open the interactive coordination dashboard to inspect goals, plans, handoffs, AMP attention frames, receipts and the audit. With no workspace it opens a workspace selector; with an absolute workspace it returns the current repository view. This tool is read-only.',
-    inputSchema: { type: 'object', additionalProperties: false, properties: { workspace: WORKSPACE_PROPERTY } },
+    title: 'AMP Settings',
+    description: 'Open the plugin settings UI for the selected project. The UI contains configuration only; status dialogs, notification surfaces and business dashboards have been removed. Existing read-only repository data remains available in the tool response for compatibility.',
+    inputSchema: { type: 'object', additionalProperties: false, properties: { workspace: WORKSPACE_PROPERTY, view: { enum: ['settings', 'legacy'], description: 'settings returns registered configuration interfaces without loading business ledgers; omission retains compatibility data' }, threadId: { type: 'string', minLength: 1, description: 'Optional observed Codex thread ID for compatibility data; no session dialog is displayed' } } },
     annotations: { readOnlyHint: true },
     _meta: {
       ui: { resourceUri: DASHBOARD_URI },
       'openai/ui': { entrypoints: [{ type: 'thread' }] },
     },
-    async handler(args) { return dashboardData(args.workspace) },
+    async handler(args) { return args.view === 'settings' ? settingsView(args.workspace, TOOLS) : dashboardData(args.workspace, typeof args.threadId === 'string' ? args.threadId : undefined) },
   },
 ]
 
-export const TOOLS: ToolDefinition[] = withCoordinationTools(BASE_TOOLS, ampHost)
+export const TOOLS: ToolDefinition[] = withSettingsWorkspaceGuard(withAmpSurface(withCoordinationTools(BASE_TOOLS, ampHost), () => ampHost.status().workspace, () => ampHost.nativeFilesystemScope()), () => ampHost.status().workspace)
 
 /** Names in registration order, used by the server and the smoke test. */
 export const TOOL_NAMES = TOOLS.map((tool: any) => tool.name)

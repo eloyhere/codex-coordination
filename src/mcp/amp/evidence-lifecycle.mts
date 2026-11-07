@@ -1,0 +1,204 @@
+/** Host-reviewed native evidence invalidation with sealed acceptance consumer edges. */
+import { assertModelParameters } from 'attention-manifest-protocol/agent'
+import type { AgentBinding } from 'attention-manifest-protocol/agent'
+import { WorkflowStore } from 'attention-manifest-protocol/workflow'
+import { WorkflowPersistence, bindEvidence } from 'attention-manifest-protocol/persistence'
+import { EvidenceLedger } from 'attention-manifest-protocol/evidence'
+import type { Evidence } from 'attention-manifest-protocol/evidence'
+import { executionFactDigest } from 'attention-manifest-protocol/runtime'
+import type { Store } from 'attention-manifest-protocol/service'
+import type { ToolDefinition } from '../lib/tools.mjs'
+import { createHash, randomUUID } from 'node:crypto'
+import { nativeRequest, openNativeStore } from './native-store.mjs'
+import { requestHostApproval } from './host-client.mjs'
+import { assertFileFreshness } from './file-freshness.mjs'
+import type { NativeFilesystemScope } from './filesystem.mjs'
+
+const REQUEST = 'codex.amp.evidence_lifecycle.requested'
+const DECISION = 'codex.amp.evidence_lifecycle.host_decision'
+const REVIEW = 'codex.amp.evidence_lifecycle.review'
+const SEALED = 'codex.amp.workflow.acceptance_proof'
+const digest = (value: unknown) => 'sha256:' + createHash('sha256').update(nativeRequest(value)).digest('hex')
+const plain = <T,>(value: T): T => JSON.parse(nativeRequest(value))
+const text = (value: unknown, max: number): value is string => typeof value === 'string' && !!value.trim() && value.length <= max
+const isDigest = (value: unknown): value is string => typeof value === 'string' && /^sha256:[a-f0-9]{64}$/.test(value)
+type Command = { action: 'revoke' | 'stale'; evidenceId: string; expectedProofHead: string; expectedEvidenceDigest: string; reason: string; idempotencyKey: string }
+const evidenceIdentity = (item: Evidence) => { const { status, ...immutable } = item; return immutable }
+
+function readSnapshot(store: Store, binding: AgentBinding, selected: string, evidenceId: string, action: Command['action'], root: string, filesystemPolicy?: () => NativeFilesystemScope | undefined) {
+  const ledger = new EvidenceLedger(), bound = bindEvidence(store, ledger)
+  bound.rehydrate()
+  if (bound.report.skipped.length) throw new Error('Native evidence contains invalid facts')
+  const item = ledger.get(evidenceId, binding.tenantId)
+  if (!item) throw new Error('Evidence is absent or outside the host tenant scope')
+  // Native revoke/markStale always return the root id even when its status cannot
+  // change, so a traversal-length check cannot detect a repeat. Reject a repeat of
+  // the same invalidation explicitly; stale -> revoked remains a legal escalation.
+  if (action === 'revoke' ? ['revoked', 'purged', 'archived'].includes(item.status) : item.status === 'stale') throw new Error('Evidence is already invalidated for this action')
+  const scopedSource = (id: string) => {
+    const evidence = ledger.get(id, binding.tenantId)
+    if (!evidence || evidence.sessionId !== selected) throw new Error('Evidence is outside the selected session scope')
+    const receipt = plain(store.refresh<any>('receipt', evidence.receiptId))
+    const context = receipt.invocation?.context
+    if (context?.tenantId !== binding.tenantId || context?.principalId !== binding.principalId || context?.sessionId !== selected) throw new Error('Evidence receipt belongs to another tenant, principal or session')
+    if (receipt.hashAlgorithm !== 'sha256-json-execution-facts/2' || executionFactDigest(receipt.invocation, receipt.observation) !== receipt.payloadDigest || receipt.observation?.invocationId !== receipt.invocation?.id) throw new Error('Evidence receipt execution digest is invalid')
+    // A file-read receipt is only valid while the exact raw bytes it cites remain
+    // unchanged; rechecking here makes both preview and post-approval CAS cover it.
+    assertFileFreshness(receipt, root, binding.tenantId, filesystemPolicy)
+    return { evidence: plain(evidence), receipt, integrity: plain(store.refresh<any>('receipt_integrity', evidence.integrityVerificationId)), verification: plain(store.refresh<any>('verification', evidence.verificationId)) }
+  }
+  scopedSource(evidenceId)
+  // The native ledger owns dependency traversal. This instance is disposable;
+  // previewing propagation never writes rows or provenance events.
+  const affectedIds = [...(action === 'revoke' ? ledger.revoke(evidenceId, binding.tenantId, 'preview', '2000-01-01T00:00:00.000Z') : ledger.markStale(evidenceId, binding.tenantId, 'preview', '2000-01-01T00:00:00.000Z'))]
+  const original = new EvidenceLedger(), originalBound = bindEvidence(store, original)
+  originalBound.rehydrate()
+  const evidence = affectedIds.map(id => {
+    const source = scopedSource(id)
+    // scopedSource uses the preview ledger; retain the exact pre-mutation row.
+    return { ...source, evidence: plain(original.get(id, binding.tenantId)!) }
+  })
+  const affected = new Set(affectedIds)
+  const proofs = store.events({ kind: SEALED }).filter(event => {
+    const value = event.payload as any
+    return Array.isArray(value.evidenceIds) && value.evidenceIds.some((id: string) => affected.has(id))
+  }).map(event => ({ sequence: event.sequence, entityId: event.entityId, proof: plain(event.payload as any) }))
+  const workflow = new WorkflowPersistence({ store, workflow: new WorkflowStore() })
+  if (workflow.restoreAll().skipped.length) throw new Error('Native workflow contains invalid facts')
+  const tasks = new Map<string, any>(), goals = new Map<string, any>()
+  const sourceCache = new Map(evidence.map(source => [source.evidence.id, source]))
+  for (const { entityId, proof } of proofs) {
+    const { digest: seal, ...unsigned } = proof
+    if (seal !== digest(unsigned) || proof.id !== proof.reviewId || proof.selected !== selected || proof.tenantId !== binding.tenantId || proof.principalId !== binding.principalId || entityId !== proof.consumer?.id || !['task', 'goal'].includes(proof.consumer?.kind) || !Number.isSafeInteger(proof.consumer?.version) || !Array.isArray(proof.evidence) || !Array.isArray(proof.evidenceIds) || !proof.evidenceIds.length || new Set(proof.evidenceIds).size !== proof.evidenceIds.length || proof.evidence.length !== proof.evidenceIds.length) throw new Error('Acceptance proof has invalid seal, identity or consumer graph')
+    const accepted = store.events({ kind: 'codex.amp.workflow.acceptance_review' }).some(event => {
+      const review = event.payload as any
+      return review.result?.acceptanceGranted === true && review.result?.proofId === proof.id && review.result?.entity?.kind === proof.consumer.kind && review.result?.entity?.id === proof.consumer.id && review.result?.entity?.version === proof.consumer.version
+    })
+    if (!accepted || proof.targetBefore?.version + 1 !== proof.consumer.version || proof.targetAfter?.id !== proof.consumer.id || proof.targetAfter?.kind !== proof.consumer.kind || proof.targetAfter?.version !== proof.consumer.version || proof.targetAfter?.sessionId !== selected || !proof.targetAfter?.assessment?.valid || nativeRequest(proof.targetAfter.assessment.evidenceIds) !== nativeRequest(proof.evidenceIds)) throw new Error('Acceptance proof has no matching sealed acceptance result')
+    for (const id of proof.evidenceIds) {
+      const source = sourceCache.get(id) ?? scopedSource(id)
+      const sealed = proof.evidence.filter((entry: any) => entry.evidence?.id === id)
+      if (sealed.length !== 1 || nativeRequest(evidenceIdentity(sealed[0].evidence)) !== nativeRequest(evidenceIdentity(source.evidence)) || nativeRequest(sealed[0].receipt) !== nativeRequest(source.receipt) || nativeRequest(sealed[0].integrity) !== nativeRequest(source.integrity) || nativeRequest(sealed[0].verification) !== nativeRequest(source.verification)) throw new Error('Acceptance proof source snapshot no longer matches durable evidence facts')
+    }
+    const target = workflow.workflow.get(proof.consumer.kind as 'task' | 'goal', proof.consumer.id)
+    if (target.sessionId !== selected || target.version < proof.consumer.version || nativeRequest(target.assessment) !== nativeRequest(proof.targetAfter.assessment)) throw new Error('Acceptance proof consumer no longer matches its historical assessment')
+    if (target.kind === 'task') {
+      if (!['completed', 'succeeded'].includes(target.state)) throw new Error('Acceptance proof task is not completed')
+      tasks.set(target.id, { task: target, proofId: proof.id, evidenceIds: proof.evidenceIds.filter((id: string) => affected.has(id)) })
+      const goal = workflow.workflow.get('goal', workflow.workflow.get('plan', target.planId).goalId)
+      if (goal.sessionId !== selected) throw new Error('Acceptance proof parent goal is outside the selected session')
+      if (goal.state === 'achieved' && goal.validity !== 'invalidated') goals.set(goal.id, goal)
+    } else {
+      if (target.state !== 'achieved') throw new Error('Acceptance proof goal is not achieved')
+      if (target.validity !== 'invalidated') goals.set(target.id, target)
+    }
+  }
+  // A current assessment that consumes affected evidence must have a sealed edge.
+  for (const kind of ['task', 'goal'] as const) for (const target of workflow.workflow.list(kind)) {
+    if (!target.assessment?.evidenceIds.some(id => affected.has(id))) continue
+    if (target.sessionId !== selected || !proofs.some(({ proof }) => proof.consumer?.kind === kind && proof.consumer?.id === target.id && nativeRequest(proof.targetAfter?.assessment) === nativeRequest(target.assessment))) throw new Error('Acceptance consumer graph is missing a sealed proof')
+  }
+  const snapshot = { selected, evidenceId, action, evidenceDigest: digest(item), proofHead: digest(proofs), evidence, affectedIds, proofs, disputedTasks: [...tasks.values()], goals: [...goals.values()], workflow: workflow.workflow.snapshot() }
+  // Preview the exact native command, including guards, before asking approval.
+  const candidate = WorkflowStore.restore(snapshot.workflow)
+  for (const goal of snapshot.goals) candidate.invalidateGoal(goal.id, { expectedVersion: goal.version, actor: 'mcp-evidence-lifecycle-review', reason: 'preview' })
+  return snapshot
+}
+
+export function evidenceLifecycleReview(binding: AgentBinding, workspace: () => unknown, scope: (root: string) => string | undefined, filesystemPolicy?: () => NativeFilesystemScope | undefined): ToolDefinition {
+  const identity = { tenantId: binding.tenantId, principalId: binding.principalId, connection: binding.sessionId }
+  const fields = ['action', 'evidenceId', 'expectedProofHead', 'expectedEvidenceDigest', 'reason', 'idempotencyKey']
+  const replay = (store: Store, key: string, request: string) => {
+    const prior = store.events({ kind: REVIEW }).map(event => event.payload as any).find(value => value.key === key)
+    if (!prior) return undefined
+    if (prior.request !== request) throw new Error('Idempotency key already used for another evidence lifecycle review')
+    return { ...prior.result, replayed: true }
+  }
+  const unresolved = (store: Store, selected: string, evidenceId: string) => {
+    const completed = new Set(store.events({ kind: REVIEW }).map(event => (event.payload as any).result?.reviewId))
+    return store.events({ kind: REQUEST }).map(event => event.payload as any).some(value => !completed.has(value.reviewId) && value.snapshot?.selected === selected && value.snapshot?.evidenceId === evidenceId)
+  }
+  return {
+    name: 'attention_manifest_protocol_evidence_lifecycle_review',
+    description: 'Host extension: preview and independently approve native evidence revoke/stale with exact evidence/proof digests. Native dependency propagation invalidates achieved goal validity through the kernel and records completed-task assessment disputes while preserving historical states. Preview supplies the CAS digests; corrective drafts and revalidation remain separate.',
+    inputSchema: { type: 'object', additionalProperties: false, required: ['action', 'evidenceId'], oneOf: [{ properties: { action: { enum: ['preview'] } } }, { required: fields, properties: { action: { enum: ['revoke', 'stale'] } } }], properties: { action: { enum: ['preview', 'revoke', 'stale'] }, evidenceId: { type: 'string', minLength: 1, maxLength: 200 }, expectedProofHead: { type: 'string', pattern: '^sha256:[a-f0-9]{64}$' }, expectedEvidenceDigest: { type: 'string', pattern: '^sha256:[a-f0-9]{64}$' }, reason: { type: 'string', minLength: 1, maxLength: 2000 }, idempotencyKey: { type: 'string', minLength: 1, maxLength: 200 } } }, annotations: { readOnlyHint: false },
+    async handler(input) {
+      assertModelParameters(input)
+      const args = plain(input) as Command | { action: 'preview'; evidenceId: string }
+      if (Object.keys(args).some(key => !fields.includes(key)) || !text(args.evidenceId, 200) || !['preview', 'revoke', 'stale'].includes(args.action)) throw new Error('Invalid evidence lifecycle parameters')
+      if (args.action === 'preview' && Object.keys(args).some(key => !['action', 'evidenceId'].includes(key))) throw new Error('Preview accepts only action and evidenceId')
+      if (args.action !== 'preview' && (!isDigest(args.expectedProofHead) || !isDigest(args.expectedEvidenceDigest) || !text(args.reason, 2000) || !text(args.idempotencyKey, 200))) throw new Error('Exact evidence/proof digests, reason and idempotency key are required')
+      Object.freeze(args)
+      const opened = openNativeStore(workspace), root = opened.root
+      let snapshot: ReturnType<typeof readSnapshot>, head: string, reviewId: string, approved = false, resumed = false
+      const request = nativeRequest(args), key = args.action === 'preview' ? '' : nativeRequest({ ...identity, idempotencyKey: args.idempotencyKey })
+      try {
+        if (args.action !== 'preview') { const previous = replay(opened.store, key, request); if (previous) return previous }
+        const selected = scope(root)
+        if (!selected) throw new Error('Select a native workflow first')
+        if (args.action === 'preview') {
+          const preview = readSnapshot(opened.store, binding, selected, args.evidenceId, 'revoke', root, filesystemPolicy)
+          return { selected, evidenceId: args.evidenceId, expectedEvidenceDigest: preview.evidenceDigest, expectedProofHead: preview.proofHead, affectedEvidence: preview.affectedIds, invalidatedGoals: preview.goals.map(goal => ({ id: goal.id, version: goal.version })), disputedTasks: preview.disputedTasks.map(item => ({ id: item.task.id, version: item.task.version })), changed: false }
+        }
+        const pending = opened.store.events({ kind: REQUEST }).map(event => event.payload as any).find(value => value.key === key)
+        if (pending) {
+          if (pending.request !== request) throw new Error('Idempotency key already used for another evidence lifecycle review')
+          const decision = opened.store.events({ kind: DECISION }).map(event => event.payload as any).find(value => value.key === key && value.request === request && value.reviewId === pending.reviewId)
+          if (!decision) throw new Error('Evidence lifecycle review is unresolved; host reconciliation is required')
+          snapshot = pending.snapshot; head = pending.head; reviewId = pending.reviewId; approved = decision.approved === true; resumed = true
+        } else {
+          snapshot = readSnapshot(opened.store, binding, selected, args.evidenceId, args.action, root, filesystemPolicy)
+          if (snapshot.evidenceDigest !== args.expectedEvidenceDigest || snapshot.proofHead !== args.expectedProofHead) throw new Error('Evidence or acceptance proof head changed; preview current digests before review')
+          if (!snapshot.affectedIds.length) throw new Error('Evidence has already been invalidated')
+          if (unresolved(opened.store, selected, args.evidenceId)) throw new Error('Evidence lifecycle target has an unresolved review; retry its original key')
+          head = digest(snapshot); reviewId = randomUUID()
+          opened.store.transaction(() => {
+            if (unresolved(opened.store, selected, args.evidenceId)) throw new Error('Evidence lifecycle target has an unresolved review')
+            opened.store.appendEvent(REQUEST, { key, request, reviewId, snapshot, head, ...identity })
+          })
+        }
+      } finally { opened.store.close() }
+      if (!resumed) {
+        approved = await requestHostApproval('native-workflow:' + snapshot!.selected, 'evidence_' + args.action, { reviewId: reviewId!, ...args, workspace: root, selected: snapshot!.selected, affectedEvidence: snapshot!.evidence, invalidatedGoals: snapshot!.goals, disputedTasks: snapshot!.disputedTasks, proofHead: snapshot!.proofHead })
+        const audit = openNativeStore(() => root)
+        try { audit.store.appendEvent(DECISION, { key, request, reviewId: reviewId!, approved, ...identity }) } finally { audit.store.close() }
+      }
+      const current = openNativeStore(() => root)
+      try {
+        return current.store.transaction(() => {
+          const previous = replay(current.store, key, request); if (previous) return previous
+          let valid = false
+          try {
+            const active = openNativeStore(workspace)
+            try { valid = active.root === root && scope(root) === snapshot!.selected } finally { active.store.close() }
+            valid = valid && approved && digest(readSnapshot(current.store, binding, snapshot!.selected, args.evidenceId, args.action, root, filesystemPolicy)) === head!
+          } catch { valid = false }
+          const result: Record<string, any> = { approved, changed: false, reviewId: reviewId!, status: approved ? 'stale_after_approval' : 'rejected' }
+          if (valid) {
+            const bound = bindEvidence(current.store, new EvidenceLedger()); bound.rehydrate()
+            const at = new Date().toISOString()
+            const affected = args.action === 'revoke' ? bound.revoke(args.evidenceId, binding.tenantId, args.reason, at) : bound.markStale(args.evidenceId, binding.tenantId, args.reason, at)
+            if (nativeRequest(affected) !== nativeRequest(snapshot!.affectedIds)) throw new Error('Native evidence propagation changed')
+            const persistence = new WorkflowPersistence({ store: current.store, workflow: WorkflowStore.restore(snapshot!.workflow) })
+            const invalidatedGoals = snapshot!.goals.map(goal => {
+              const invalidated = persistence.workflow.invalidateGoal(goal.id, { expectedVersion: goal.version, actor: 'mcp-evidence-lifecycle-review', reason: args.reason })
+              current.store.save('goal', invalidated as any, { expectedVersion: goal.version })
+              persistence.persistEvent(persistence.workflow.history().at(-1)!)
+              return invalidated
+            })
+            const disputedTasks = snapshot!.disputedTasks.map(({ task, proofId, evidenceIds }) => {
+              const attachment = { reviewId: reviewId!, selected: snapshot!.selected, taskId: task.id, taskVersion: task.version, status: 'disputed', assessmentValid: false, historicalAssessment: task.assessment, reason: args.reason, sourceEvidenceId: args.evidenceId, evidenceIds, proofId, action: args.action, recordedAt: at, ...identity }
+              current.store.appendEvent('codex.amp.workflow.task_disputed', attachment, task.id)
+              return attachment
+            })
+            const impact = { reviewId: reviewId!, selected: snapshot!.selected, action: args.action, sourceEvidenceId: args.evidenceId, affectedEvidence: [...affected], proofHead: snapshot!.proofHead, evidenceDigest: snapshot!.evidenceDigest, reason: args.reason, invalidatedGoals: invalidatedGoals.map(goal => ({ id: goal.id, version: goal.version, achievedAt: goal.achievedAt })), disputedTasks, recordedAt: at, ...identity }
+            current.store.appendEvent('codex.amp.evidence_lifecycle.impact', { ...impact, digest: digest(impact) }, args.evidenceId)
+            Object.assign(result, { changed: true, status: 'applied', affectedEvidence: [...affected], invalidatedGoals, disputedTasks, effects: ['native_evidence_' + args.action, 'sealed_acceptance_impact_recorded'] })
+          }
+          current.store.appendEvent(REVIEW, { key, request, ...identity, scope: snapshot!.selected, result })
+          return result
+        })
+      } finally { current.store.close() }
+    },
+  }
+}
