@@ -6,7 +6,8 @@ import { proposalBindings } from './proposals.mjs'
 import { projectBindings } from './project.mjs'
 import ampPackage from 'attention-manifest-protocol/package.json' with { type: 'json' }
 import { migrationTool } from './migration.mjs'
-import { workflowBindings } from './workflow.mjs'
+import { workflowBindings, scopeCallback } from './workflow.mjs'
+import { bootstrapTool } from './workflow-bootstrap.mjs'
 import { executionBindings } from './execution.mjs'
 import { evidenceBindings } from './evidence.mjs'
 import { filesystemBindings } from './filesystem.mjs'
@@ -15,6 +16,7 @@ import { sessionBindings } from '../codex/session-tools.mjs'
 import { configureSnapshotCatalog } from '../codex/snapshot.mjs'
 import { ENTITY_REGISTRY } from 'attention-manifest-protocol/entity'
 import { attentionBindings } from './attention.mjs'
+import { attentionScheduleBinding } from './attention-schedule.mjs'
 import { localDiscoveryProviders } from './discovery.mjs'
 import { writeBinding } from './write.mjs'
 import { cooperationBindings } from './cooperation.mjs'
@@ -38,7 +40,11 @@ export function withAmpSurface(tools: ToolDefinition[], workspace: () => unknown
   const binding = Object.freeze({ tenantId: 'local', principalId: 'codex', sessionId: randomUUID(), policyVersion: 'codex-local-read-v1', cancellationEpoch: 0 })
   const selectedWorkflows = new Map<string, string>()
   const selectedThreads = new Map<string, string>()
-  const workflows = [...workflowBindings(binding, workspace, selectedWorkflows), ...sessionBindings(binding, workspace).map(tool => {
+  // One live-aware resolver for the custom file effects: an explicitly selected
+  // imported snapshot still wins, otherwise the observed Codex thread is followed
+  // to its native Session. A Store is reused whenever the caller already has one.
+  const scopeForRoot = scopeCallback(selectedWorkflows, root => selectedThreads.get(root))
+  const workflows = [...workflowBindings(binding, workspace, selectedWorkflows, root => selectedThreads.get(root)), ...sessionBindings(binding, workspace).map(tool => {
     if (tool.name !== 'attention_manifest_protocol_session.get') return tool
     const handler = tool.handler
     return { ...tool, async handler(args: Record<string, unknown>) {
@@ -48,9 +54,9 @@ export function withAmpSurface(tools: ToolDefinition[], workspace: () => unknown
     } }
   })]
   const workflowNames = new Set(workflows.map(tool => tool.name))
-  tools = [...tools, ...proposalBindings(binding, workspace).filter(tool => !workflowNames.has(tool.name)), ...projectBindings(binding, workspace), migrationTool(workspace), ...workflows, ...cooperationBindings(binding, workspace, root => selectedWorkflows.get(root)), submissionReview(binding, workspace, root => selectedWorkflows.get(root), filesystemPolicy)]
-  tools = [...tools, ...evidenceBindings(binding, workspace, filesystemPolicy), ...attentionBindings(binding, workspace)]
-  const customFiles = [writeBinding(binding, workspace, filesystemPolicy, root => selectedWorkflows.get(root)), replaceBinding(binding, workspace, filesystemPolicy, root => selectedWorkflows.get(root))]
+  tools = [...tools, ...proposalBindings(binding, workspace).filter(tool => !workflowNames.has(tool.name)), ...projectBindings(binding, workspace), migrationTool(workspace), ...workflows, bootstrapTool(binding, workspace, selectedWorkflows, root => selectedThreads.get(root)), ...cooperationBindings(binding, workspace, root => selectedWorkflows.get(root)), submissionReview(binding, workspace, root => selectedWorkflows.get(root), filesystemPolicy)]
+  tools = [...tools, ...evidenceBindings(binding, workspace, filesystemPolicy), ...attentionBindings(binding, workspace), attentionScheduleBinding(binding, workspace, scopeForRoot)]
+  const customFiles = [writeBinding(binding, workspace, filesystemPolicy, scopeForRoot), replaceBinding(binding, workspace, filesystemPolicy, scopeForRoot)]
   const customFileNames = new Set(customFiles.map(tool => tool.name))
   const filesystem = [...filesystemBindings(binding, workspace, filesystemPolicy).filter(tool => !customFileNames.has(tool.name)), ...customFiles]
   const filesystemNames = new Set(filesystem.map(tool => tool.name))
@@ -59,12 +65,12 @@ export function withAmpSurface(tools: ToolDefinition[], workspace: () => unknown
   const executionNames = new Set(execution.map(tool => tool.name))
   // executionBindings captured unwrapped sources; only direct MCP entries need
   // the additional guard, so both routes share one ledger without double debit.
-  tools = [...guardNativeReadContracts(tools.filter(tool => !executionNames.has(tool.name)), binding, workspace), ...execution, codexSyncTool(workspace), workflowCancelReview(binding, workspace, root => selectedWorkflows.get(root)), workflowAcceptanceReview(binding, workspace, root => selectedWorkflows.get(root), filesystemPolicy),
+  tools = [...guardNativeReadContracts(tools.filter(tool => !executionNames.has(tool.name)), binding, workspace), ...execution, codexSyncTool(workspace), workflowCancelReview(binding, workspace, scopeForRoot), workflowAcceptanceReview(binding, workspace, scopeForRoot, filesystemPolicy),
     // Host extensions: exact approval, native guards and durable journals. None
     // claims Codex main-loop control; no host evaluator is injected by default,
     // so profession certification stays explicitly unsupported.
     ...governanceBindings(binding, workspace, {}, filesystemPolicy), ...projectViewsBindings(binding, workspace, filesystemPolicy),
-    reconciliationReview(binding, workspace, filesystemPolicy, root => selectedWorkflows.get(root)), evidenceLifecycleReview(binding, workspace, root => selectedWorkflows.get(root), filesystemPolicy), receiptEvaluation(binding, workspace)]
+    reconciliationReview(binding, workspace, filesystemPolicy, scopeForRoot), evidenceLifecycleReview(binding, workspace, scopeForRoot, filesystemPolicy), receiptEvaluation(binding, workspace)]
   const standard = createAgentSurface()
   const registered = new Set(tools.map(tool => tool.name))
   const boundSurface = standard.tools.filter(tool => registered.has(tool.name))

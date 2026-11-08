@@ -17,7 +17,7 @@ import "../chunks/chunk-RFL4UMRM.mjs";
 import "../chunks/chunk-WRPECDXT.mjs";
 import {
   assertModelParameters
-} from "../chunks/chunk-GO36SU47.mjs";
+} from "../chunks/chunk-EABV3UTP.mjs";
 import "../chunks/chunk-PSOOAZQ2.mjs";
 import "../chunks/chunk-DJR3CBCZ.mjs";
 import "../chunks/chunk-GF4UECXF.mjs";
@@ -141,7 +141,7 @@ function evidenceLifecycleReview(binding, workspace, scope, filesystemPolicy) {
           const previous = replay(opened.store, key, request);
           if (previous) return previous;
         }
-        const selected = scope(root);
+        const selected = scope(root, opened.store);
         if (!selected) throw new Error("Select a native workflow first");
         if (args.action === "preview") {
           const preview = readSnapshot(opened.store, binding, selected, args.evidenceId, "revoke", root, filesystemPolicy);
@@ -190,7 +190,7 @@ function evidenceLifecycleReview(binding, workspace, scope, filesystemPolicy) {
           try {
             const active = openNativeStore(workspace);
             try {
-              valid = active.root === root && scope(root) === snapshot.selected;
+              valid = active.root === root && scope(root, active.store) === snapshot.selected;
             } finally {
               active.store.close();
             }

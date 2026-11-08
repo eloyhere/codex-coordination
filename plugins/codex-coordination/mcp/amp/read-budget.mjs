@@ -15,7 +15,7 @@ import "../chunks/chunk-RFL4UMRM.mjs";
 import "../chunks/chunk-WRPECDXT.mjs";
 import {
   assertModelParameters
-} from "../chunks/chunk-GO36SU47.mjs";
+} from "../chunks/chunk-EABV3UTP.mjs";
 import "../chunks/chunk-PSOOAZQ2.mjs";
 import "../chunks/chunk-DJR3CBCZ.mjs";
 import {

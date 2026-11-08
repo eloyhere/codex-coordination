@@ -196,7 +196,7 @@ async function main() {
 
     const list = await wire.request('tools/list')
     const tools = list.result?.tools ?? []
-    assertEqual(tools.length, 163, 'coordination and canonical AMP tools are registered')
+    assertEqual(tools.length, 165, 'coordination and canonical AMP tools are registered')
     assertEqual(tools.map((tool) => tool.name).sort(), [...new Set([
       'coordination_check',
       'coordination_dashboard',
@@ -225,6 +225,7 @@ async function main() {
       'attention_manifest_protocol_submissions',
       'attention_manifest_protocol_migration',
       'attention_manifest_protocol_workflow_scope', 'attention_manifest_protocol_mission.get',
+      'attention_manifest_protocol_workflow_bootstrap',
       'attention_manifest_protocol_workflow_review', 'attention_manifest_protocol_workflow_cancel_review', 'attention_manifest_protocol_workflow_acceptance_review', 'attention_manifest_protocol_governance', 'attention_manifest_protocol_governance_review', 'attention_manifest_protocol_project_views', 'attention_manifest_protocol_project_review', 'attention_manifest_protocol_workflow_reconciliation_review', 'attention_manifest_protocol_evidence_lifecycle_review', 'attention_manifest_protocol_receipt_evaluation',
       'attention_manifest_protocol_execution.run', 'attention_manifest_protocol_execution.read_handle', 'attention_manifest_protocol_budget.remaining',
       'attention_manifest_protocol_evidence.get', 'attention_manifest_protocol_evidence.list', 'attention_manifest_protocol_evidence.cite', 'attention_manifest_protocol_evidence_review',
@@ -235,7 +236,7 @@ async function main() {
       'attention_manifest_protocol_cooperation.inbox', 'attention_manifest_protocol_cooperation.send', 'attention_manifest_protocol_cooperation.report_result',
       'attention_manifest_protocol_cooperation_review', 'attention_manifest_protocol_submission_review',
       'attention_manifest_protocol_task.report_progress',
-      'attention_manifest_protocol_attention.get', 'attention_manifest_protocol_attention.context',
+      'attention_manifest_protocol_attention.get', 'attention_manifest_protocol_attention.context', 'attention_manifest_protocol_attention_schedule',
       'attention_manifest_protocol_intent.get', 'attention_manifest_protocol_intent.list',
       'attention_manifest_protocol_task.get', 'attention_manifest_protocol_task.list_ready',
       'attention_manifest_protocol_action.get', 'attention_manifest_protocol_action.list',

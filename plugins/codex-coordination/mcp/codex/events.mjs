@@ -7,6 +7,7 @@ import { nativeRequest, nativeWorkspaceRoot } from "../amp/native-store.mjs";
 import { openCodexStore } from "./store.mjs";
 import { createHash, randomUUID } from "node:crypto";
 import { syncNativeSession } from "./session.mjs";
+import { captureNativeWorkflow } from "./workflow-capture.mjs";
 var hookEvents = ["SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PreModelRequest", "PostModelRequest", "PreCompact", "PostCompact", "Stop", "Interrupt"];
 var hash = (value) => createHash("sha256").update(nativeRequest(value)).digest("hex");
 function ingestHook(event) {
@@ -25,6 +26,11 @@ function ingestHook(event) {
       if (previous) return { eventId, duplicate: true };
       syncNativeSession(store, event.session_id, event.hook_event_name);
       store.appendEvent("codex.sync.hook", { eventId, workspaceRoot: root, source: "codex-command-hook", observedAt: (/* @__PURE__ */ new Date()).toISOString(), event });
+      try {
+        captureNativeWorkflow(store, event);
+      } catch (error) {
+        store.appendEvent("codex.amp.live_workflow.error", { workspaceRoot: root, threadId: event.session_id, turnId: event.turn_id ?? null, hookEventName: event.hook_event_name, message: error instanceof Error ? error.message : String(error), source: "codex-command-hook", observedAt: (/* @__PURE__ */ new Date()).toISOString() });
+      }
       return { eventId, duplicate: false };
     });
   } finally {

@@ -10,7 +10,7 @@ import "../chunks/chunk-RFL4UMRM.mjs";
 import "../chunks/chunk-WRPECDXT.mjs";
 import {
   assertModelParameters
-} from "../chunks/chunk-GO36SU47.mjs";
+} from "../chunks/chunk-EABV3UTP.mjs";
 import "../chunks/chunk-PSOOAZQ2.mjs";
 import "../chunks/chunk-DJR3CBCZ.mjs";
 import "../chunks/chunk-GF4UECXF.mjs";
@@ -30,7 +30,7 @@ var allowed = {
 function workflowReview(binding, workspace, scope) {
   return {
     name: "attention_manifest_protocol_workflow_review",
-    description: "Request an independent MCP host approval for one exact nonterminal transition in the selected plugin workflow, including bounded plan approval and task readiness. Fails closed when host elicitation is unavailable. Does not start actions, verify evidence or declare success. It controls AMP plugin workflows, not Codex chat lifecycle.",
+    description: "Request an independent MCP host approval for one exact nonterminal transition in the selected plugin workflow, which is either an imported snapshot or the observed live Codex thread selected with attention_manifest_protocol_session.get, including bounded plan approval and task readiness. Fails closed when host elicitation is unavailable. Does not start actions, verify evidence or declare success. It controls AMP plugin workflows, not Codex chat lifecycle.",
     inputSchema: { type: "object", additionalProperties: false, required: ["kind", "id", "to", "expectedVersion", "idempotencyKey", "reason"], properties: {
       kind: { enum: Object.keys(allowed) },
       id: { type: "string", minLength: 1 },
@@ -50,7 +50,7 @@ function workflowReview(binding, workspace, scope) {
       const root = opened.root;
       let selected;
       try {
-        const candidate = scope(root);
+        const candidate = scope(root, opened.store);
         if (!candidate) throw new Error("Select a native workflow first");
         selected = candidate;
       } catch (error) {
@@ -69,6 +69,7 @@ function workflowReview(binding, workspace, scope) {
           const plan = kind === "plan" ? workflow.get("plan", entity.id) : workflow.get("plan", workflow.get("task", entity.id).planId);
           if (Date.parse(plan.bounds.deadline) <= Date.now()) throw new Error("Plan progress bounds have expired; propose a new draft with reviewed bounds");
           const goal = workflow.get("goal", plan.goalId);
+          if (goal.sessionId !== selected) throw new Error("Plan goal is outside the selected workflow scope");
           if (goal.state !== "active") throw new Error("Plan goal must be active before plan/task admission");
           if (!workflow.list("task", selected).some((task) => task.planId === plan.id)) throw new Error("Plan must have a task DAG before admission");
         }
@@ -99,7 +100,7 @@ function workflowReview(binding, workspace, scope) {
       const approved = await requestHostApproval("native-workflow:" + selected, "transition", { reviewId, ...args, workspace: root });
       const current = openNativeStore(workspace);
       try {
-        if (current.root !== root || scope(root) !== selected) throw new Error("Workspace or workflow scope changed while awaiting host review");
+        if (current.root !== root || scope(root, current.store) !== selected) throw new Error("Workspace or workflow scope changed while awaiting host review");
         return current.store.transaction(() => {
           const prior = current.store.events({ kind: "codex.amp.workflow.review" }).find((event) => event.payload.key === key);
           if (prior) {

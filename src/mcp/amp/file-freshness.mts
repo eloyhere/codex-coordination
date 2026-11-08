@@ -4,7 +4,7 @@ import type { NativeFilesystemScope } from './filesystem.mjs'
 import type { ReceiptCore } from 'attention-manifest-protocol/receipt'
 import { realpathSync } from 'node:fs'
 
-export const fileReceiptTools = new Set(['attention_manifest_protocol_workspace.read', 'attention_manifest_protocol_workspace.outline', 'attention_manifest_protocol_workspace.document_outline', 'attention_manifest_protocol_workspace.write'])
+export const fileReceiptTools = new Set(['attention_manifest_protocol_workspace.read', 'attention_manifest_protocol_workspace.outline', 'attention_manifest_protocol_workspace.document_outline', 'attention_manifest_protocol_workspace.write', 'attention_manifest_protocol_replace'])
 
 export function assertFileFreshness(receipt: ReceiptCore, root: string, tenantId: string, policy?: () => NativeFilesystemScope | undefined): void {
   if (!fileReceiptTools.has(receipt.invocation.toolId)) return

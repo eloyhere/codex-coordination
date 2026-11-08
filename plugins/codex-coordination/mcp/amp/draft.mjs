@@ -15,7 +15,7 @@ import "../chunks/chunk-WRPECDXT.mjs";
 import {
   AgentGateway,
   createAgentSurface
-} from "../chunks/chunk-GO36SU47.mjs";
+} from "../chunks/chunk-EABV3UTP.mjs";
 import "../chunks/chunk-PSOOAZQ2.mjs";
 import "../chunks/chunk-DJR3CBCZ.mjs";
 import {
@@ -40,8 +40,8 @@ function draftBinding(binding, workspace, scope) {
       const { root, store } = openNativeStore(workspace);
       try {
         return store.transaction(() => {
-          const selected = scope(root);
-          if (!selected || selected !== context.binding.sessionId) throw new Error("Select a native workflow first");
+          const selected = scope(root, store);
+          if (!selected) throw new Error("Select a native workflow first");
           const request = nativeRequest({ parameters, scope: selected });
           const key = binding.principalId + ":" + context.idempotencyKey;
           const prior = store.events({ kind: "codex.amp.plan.draft" }).find((event) => event.payload.key === key);
@@ -68,9 +68,12 @@ function draftBinding(binding, workspace, scope) {
           const report = persistence.restoreAll();
           if (report.skipped.length) throw new Error("Native workflow contains invalid facts");
           const imported = store.events({ kind: "codex.amp.legacy_import" }).find((event) => event.payload.sessionId === selected)?.payload;
-          const targetId = archived ? imported?.references["goal:" + payload.targetId] ?? payload.targetId : payload.targetId;
+          const targetId = archived ? imported?.references?.["goal:" + payload.targetId] ?? payload.targetId : payload.targetId;
           const goal = persistence.workflow.get("goal", String(targetId));
           if (goal.sessionId !== selected) throw new Error("Goal is outside the selected workflow scope");
+          const session = persistence.workflow.get("session", selected);
+          if (!["active", "idle"].includes(session.state)) throw new Error("Selected workflow session must be active/idle before proposing a plan");
+          if (goal.state !== "active") throw new Error("Plan proposal target Goal must be active");
           const plan = persistence.create("plan", { id: submission.id, sessionId: selected, goalId: goal.id, bounds: submission.bounds }, binding.principalId);
           const pending = new Map(submission.tasks.map((task) => [task.id, task]));
           if (pending.size !== submission.tasks.length) throw new Error("Duplicate task id in draft");
@@ -86,7 +89,7 @@ function draftBinding(binding, workspace, scope) {
             }
             if (!advanced) throw new Error("Draft task dependencies are cyclic or reference missing tasks");
           }
-          const result = { plan, tasks, approval: "not_granted", executionAuthorized: false };
+          const result = { plan, tasks, approval: "not_granted", executionAuthorized: false, origin: imported ? "native-plugin-workflow" : "codex-live", scope: selected };
           store.appendEvent("codex.amp.plan.draft", { key, request, scope: selected, submissionId: archived?.id ?? null, result });
           return result;
         });
@@ -105,14 +108,22 @@ function draftBinding(binding, workspace, scope) {
   } });
   return {
     name,
-    description: "Create a native draft plan and pending task DAG for the selected active workflow goal. Supply a typed proposal or consume an old pending plan submission by submissionId. Creation is transactional and idempotent; it does not approve the plan or authorize execution.",
+    description: "Create a native draft plan and pending task DAG for the active Goal of the selected workflow, which is either an imported snapshot or the observed live Codex thread selected with attention_manifest_protocol_session.get. For a live workflow the proposal targetId is the native Goal id; imported snapshots keep their legacy reference mapping. Supply a typed proposal or consume an old pending plan submission by submissionId. Creation is transactional and idempotent; it does not approve the plan or authorize execution.",
     inputSchema: { type: "object", additionalProperties: false, required: ["idempotencyKey"], oneOf: [{ required: ["targetId", "submission"] }, { required: ["submissionId"] }], properties: { idempotencyKey: { type: "string", minLength: 1, maxLength: 200 }, targetId: { type: "string", minLength: 1 }, submission: submissionSchema, submissionId: { type: "string", minLength: 1 } } },
     annotations: { readOnlyHint: false },
     async handler(args) {
       const { idempotencyKey, ...parameters } = args;
-      const { root, store } = openNativeStore(workspace);
-      store.close();
-      return await gateway.call(name, parameters, { binding: { ...binding, sessionId: scope(root) ?? binding.sessionId }, idempotencyKey });
+      const resolved = (() => {
+        const { root, store } = openNativeStore(workspace);
+        try {
+          return scope(root, store);
+        } catch {
+          return void 0;
+        } finally {
+          store.close();
+        }
+      })();
+      return await gateway.call(name, parameters, { binding: { ...binding, sessionId: resolved ?? binding.sessionId }, idempotencyKey });
     }
   };
 }

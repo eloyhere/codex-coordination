@@ -5,7 +5,7 @@ import "../chunks/chunk-GF4UECXF.mjs";
 // src/mcp/amp/file-freshness.mts
 import { NativeReadStorage } from "./filesystem.mjs";
 import { realpathSync } from "node:fs";
-var fileReceiptTools = /* @__PURE__ */ new Set(["attention_manifest_protocol_workspace.read", "attention_manifest_protocol_workspace.outline", "attention_manifest_protocol_workspace.document_outline", "attention_manifest_protocol_workspace.write"]);
+var fileReceiptTools = /* @__PURE__ */ new Set(["attention_manifest_protocol_workspace.read", "attention_manifest_protocol_workspace.outline", "attention_manifest_protocol_workspace.document_outline", "attention_manifest_protocol_workspace.write", "attention_manifest_protocol_replace"]);
 function assertFileFreshness(receipt, root, tenantId, policy) {
   if (!fileReceiptTools.has(receipt.invocation.toolId)) return;
   const anchor = receipt.workspaceAnchor;

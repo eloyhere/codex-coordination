@@ -11,7 +11,7 @@ import "../chunks/chunk-WRPECDXT.mjs";
 import {
   AgentGateway,
   createAgentSurface
-} from "../chunks/chunk-GO36SU47.mjs";
+} from "../chunks/chunk-EABV3UTP.mjs";
 import "../chunks/chunk-PSOOAZQ2.mjs";
 import "../chunks/chunk-DJR3CBCZ.mjs";
 import "../chunks/chunk-GF4UECXF.mjs";
@@ -28,7 +28,7 @@ function progressBinding(binding, workspace, scope) {
       const { root, store } = openNativeStore(workspace);
       try {
         return store.transaction(() => {
-          const selected = scope(root);
+          const selected = scope(root, store);
           if (!selected) throw new Error("Select a native workflow first");
           if (typeof parameters.id !== "string" || typeof parameters.summary !== "string" || !parameters.summary.trim() || parameters.summary.length > 4e3 || !Number.isSafeInteger(parameters.expectedVersion) || Number(parameters.expectedVersion) < 0) throw new Error("Task id, expectedVersion and a nonempty bounded summary are required");
           const persistence = new WorkflowPersistence({ store, workflow: new WorkflowStore() });

@@ -17,7 +17,7 @@ import "../chunks/chunk-RFL4UMRM.mjs";
 import "../chunks/chunk-WRPECDXT.mjs";
 import {
   assertModelParameters
-} from "../chunks/chunk-GO36SU47.mjs";
+} from "../chunks/chunk-EABV3UTP.mjs";
 import "../chunks/chunk-PSOOAZQ2.mjs";
 import "../chunks/chunk-DJR3CBCZ.mjs";
 import "../chunks/chunk-GF4UECXF.mjs";
@@ -48,7 +48,7 @@ function workflowAcceptanceReview(binding, workspace, scope, filesystemPolicy) {
     return store.events({ kind: requested }).map((event) => event.payload).some((value) => !completed.has(value.reviewId) && value.snapshot?.selected === selected && value.snapshot?.target?.kind === args.kind && value.snapshot?.target?.id === args.id);
   };
   const read = (store, root, args) => {
-    const selected = scope(root);
+    const selected = scope(root, store);
     if (!selected) throw new Error("Select a native workflow first");
     const persistence = new WorkflowPersistence({ store, workflow: new WorkflowStore() });
     if (persistence.restoreAll().skipped.length) throw new Error("Native workflow contains invalid facts");

@@ -7,7 +7,7 @@ import {
   AgentGateway,
   SURFACE_MODULES,
   createAgentSurface
-} from "../chunks/chunk-GO36SU47.mjs";
+} from "../chunks/chunk-EABV3UTP.mjs";
 import "../chunks/chunk-PSOOAZQ2.mjs";
 import "../chunks/chunk-DJR3CBCZ.mjs";
 import "../chunks/chunk-GF4UECXF.mjs";
@@ -106,7 +106,8 @@ var package_default = {
 
 // src/mcp/amp/surface.mts
 import { migrationTool } from "./migration.mjs";
-import { workflowBindings } from "./workflow.mjs";
+import { workflowBindings, scopeCallback } from "./workflow.mjs";
+import { bootstrapTool } from "./workflow-bootstrap.mjs";
 import { executionBindings } from "./execution.mjs";
 import { evidenceBindings } from "./evidence.mjs";
 import { filesystemBindings } from "./filesystem.mjs";
@@ -114,6 +115,7 @@ import { codexSyncTool } from "../codex/tools.mjs";
 import { sessionBindings } from "../codex/session-tools.mjs";
 import { configureSnapshotCatalog } from "../codex/snapshot.mjs";
 import { attentionBindings } from "./attention.mjs";
+import { attentionScheduleBinding } from "./attention-schedule.mjs";
 import { localDiscoveryProviders } from "./discovery.mjs";
 import { writeBinding } from "./write.mjs";
 import { cooperationBindings } from "./cooperation.mjs";
@@ -134,7 +136,8 @@ function withAmpSurface(tools, workspace = () => void 0, filesystemPolicy) {
   const binding = Object.freeze({ tenantId: "local", principalId: "codex", sessionId: randomUUID(), policyVersion: "codex-local-read-v1", cancellationEpoch: 0 });
   const selectedWorkflows = /* @__PURE__ */ new Map();
   const selectedThreads = /* @__PURE__ */ new Map();
-  const workflows = [...workflowBindings(binding, workspace, selectedWorkflows), ...sessionBindings(binding, workspace).map((tool) => {
+  const scopeForRoot = scopeCallback(selectedWorkflows, (root) => selectedThreads.get(root));
+  const workflows = [...workflowBindings(binding, workspace, selectedWorkflows, (root) => selectedThreads.get(root)), ...sessionBindings(binding, workspace).map((tool) => {
     if (tool.name !== "attention_manifest_protocol_session.get") return tool;
     const handler = tool.handler;
     return { ...tool, async handler(args) {
@@ -144,9 +147,9 @@ function withAmpSurface(tools, workspace = () => void 0, filesystemPolicy) {
     } };
   })];
   const workflowNames = new Set(workflows.map((tool) => tool.name));
-  tools = [...tools, ...proposalBindings(binding, workspace).filter((tool) => !workflowNames.has(tool.name)), ...projectBindings(binding, workspace), migrationTool(workspace), ...workflows, ...cooperationBindings(binding, workspace, (root) => selectedWorkflows.get(root)), submissionReview(binding, workspace, (root) => selectedWorkflows.get(root), filesystemPolicy)];
-  tools = [...tools, ...evidenceBindings(binding, workspace, filesystemPolicy), ...attentionBindings(binding, workspace)];
-  const customFiles = [writeBinding(binding, workspace, filesystemPolicy, (root) => selectedWorkflows.get(root)), replaceBinding(binding, workspace, filesystemPolicy, (root) => selectedWorkflows.get(root))];
+  tools = [...tools, ...proposalBindings(binding, workspace).filter((tool) => !workflowNames.has(tool.name)), ...projectBindings(binding, workspace), migrationTool(workspace), ...workflows, bootstrapTool(binding, workspace, selectedWorkflows, (root) => selectedThreads.get(root)), ...cooperationBindings(binding, workspace, (root) => selectedWorkflows.get(root)), submissionReview(binding, workspace, (root) => selectedWorkflows.get(root), filesystemPolicy)];
+  tools = [...tools, ...evidenceBindings(binding, workspace, filesystemPolicy), ...attentionBindings(binding, workspace), attentionScheduleBinding(binding, workspace, scopeForRoot)];
+  const customFiles = [writeBinding(binding, workspace, filesystemPolicy, scopeForRoot), replaceBinding(binding, workspace, filesystemPolicy, scopeForRoot)];
   const customFileNames = new Set(customFiles.map((tool) => tool.name));
   const filesystem = [...filesystemBindings(binding, workspace, filesystemPolicy).filter((tool) => !customFileNames.has(tool.name)), ...customFiles];
   const filesystemNames = new Set(filesystem.map((tool) => tool.name));
@@ -157,15 +160,15 @@ function withAmpSurface(tools, workspace = () => void 0, filesystemPolicy) {
     ...guardNativeReadContracts(tools.filter((tool) => !executionNames.has(tool.name)), binding, workspace),
     ...execution,
     codexSyncTool(workspace),
-    workflowCancelReview(binding, workspace, (root) => selectedWorkflows.get(root)),
-    workflowAcceptanceReview(binding, workspace, (root) => selectedWorkflows.get(root), filesystemPolicy),
+    workflowCancelReview(binding, workspace, scopeForRoot),
+    workflowAcceptanceReview(binding, workspace, scopeForRoot, filesystemPolicy),
     // Host extensions: exact approval, native guards and durable journals. None
     // claims Codex main-loop control; no host evaluator is injected by default,
     // so profession certification stays explicitly unsupported.
     ...governanceBindings(binding, workspace, {}, filesystemPolicy),
     ...projectViewsBindings(binding, workspace, filesystemPolicy),
-    reconciliationReview(binding, workspace, filesystemPolicy, (root) => selectedWorkflows.get(root)),
-    evidenceLifecycleReview(binding, workspace, (root) => selectedWorkflows.get(root), filesystemPolicy),
+    reconciliationReview(binding, workspace, filesystemPolicy, scopeForRoot),
+    evidenceLifecycleReview(binding, workspace, scopeForRoot, filesystemPolicy),
     receiptEvaluation(binding, workspace)
   ];
   const standard = createAgentSurface();

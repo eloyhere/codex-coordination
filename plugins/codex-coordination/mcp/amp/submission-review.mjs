@@ -3,6 +3,11 @@ import { createRequire as __codexCreateRequire } from "node:module"; import { fi
 import {
   EvidenceLedger
 } from "../chunks/chunk-HZFMX4CQ.mjs";
+import {
+  focus,
+  mount
+} from "../chunks/chunk-VGXEY64P.mjs";
+import "../chunks/chunk-4GF5CZO4.mjs";
 import "../chunks/chunk-WOQ4WTC7.mjs";
 import {
   WorkflowPersistence,
@@ -10,98 +15,16 @@ import {
   bindEvidence
 } from "../chunks/chunk-TLSLBMJO.mjs";
 import "../chunks/chunk-IDGTYCME.mjs";
-import "../chunks/chunk-4GF5CZO4.mjs";
-import {
-  AttentionError,
-  isExpired,
-  requireText,
-  timestamp,
-  unitInterval,
-  validateObject
-} from "../chunks/chunk-RFL4UMRM.mjs";
+import "../chunks/chunk-RFL4UMRM.mjs";
 import {
   ENTITY_REGISTRY
 } from "../chunks/chunk-WRPECDXT.mjs";
 import {
   assertModelParameters
-} from "../chunks/chunk-GO36SU47.mjs";
+} from "../chunks/chunk-EABV3UTP.mjs";
 import "../chunks/chunk-PSOOAZQ2.mjs";
 import "../chunks/chunk-DJR3CBCZ.mjs";
 import "../chunks/chunk-GF4UECXF.mjs";
-
-// node_modules/attention-manifest-protocol/lib/attention/operations.js
-function revise(object, options, allowInactive = false) {
-  validateObject(object);
-  timestamp(options.now);
-  requireText(options.reason, "reason");
-  if (object.version !== options.expectedVersion)
-    throw new AttentionError("version_conflict", "Attention version changed");
-  if (object.version >= Number.MAX_SAFE_INTEGER)
-    throw new AttentionError("invalid", "Attention version exhausted");
-  if (timestamp(options.now) < timestamp(object.updatedAt))
-    throw new AttentionError("invalid", "Operation predates current version");
-  if (!allowInactive && isExpired(object, options.now))
-    throw new AttentionError("expired", "Attention is expired");
-  if (!allowInactive && object.stale)
-    throw new AttentionError("stale", "Refresh stale attention first");
-  return { ...structuredClone(object), version: object.version + 1, updatedAt: options.now, lastReason: options.reason, assessment: void 0 };
-}
-function focus(object, options, amount = 0.25) {
-  unitInterval(amount, "amount");
-  return { ...revise(object, options), intensity: Math.min(1, object.intensity + amount) };
-}
-function mount(object, options) {
-  return { ...revise(object, options), mounted: true };
-}
-
-// node_modules/attention-manifest-protocol/lib/attention/scheduler.js
-var ATTENTION_STAGES = Object.freeze([
-  "receive",
-  "parse",
-  "strategy",
-  "plan",
-  "tactics",
-  "execute",
-  "verify",
-  "diagnose",
-  "respond"
-]);
-var ATTENTION_STAGE_LABELS = Object.freeze({
-  receive: "\u63A5\u6536",
-  parse: "\u89E3\u6790",
-  strategy: "\u6218\u7565",
-  plan: "\u89C4\u5212",
-  tactics: "\u6218\u672F",
-  execute: "\u6267\u884C",
-  verify: "\u9A8C\u8BC1",
-  diagnose: "\u5931\u8D25\u8BCA\u65AD",
-  respond: "\u54CD\u5E94"
-});
-function stageProfile(stage, focusLevel, sees) {
-  return Object.freeze({ stage, focusLevel, sees: Object.freeze([...sees]) });
-}
-var ATTENTION_STAGE_PROFILES = Object.freeze({
-  receive: stageProfile("receive", "Turn", ["current input", "session history summary"]),
-  parse: stageProfile("parse", "Turn + Intent", ["input parsing", "intent candidates", "ambiguities"]),
-  strategy: stageProfile("strategy", "Mission", ["value", "constraints", "total resources"]),
-  plan: stageProfile("plan", "Goal + Plan", ["end state", "alternatives", "DAG constraints"]),
-  tactics: stageProfile("tactics", "Task DAG", ["ready tasks", "dependencies", "parallelism"]),
-  execute: stageProfile("execute", "Action", ["current command", "preconditions", "expected output"]),
-  verify: stageProfile("verify", "Current-level standard + subordinate evidence", ["success criteria vs actual", "subordinate evidence"]),
-  diagnose: stageProfile("diagnose", "Minimal failing unit + fallback path", ["failure classification", "fallback path", "minimal failing unit"]),
-  respond: stageProfile("respond", "Turn", ["response organization", "evidence citations"])
-});
-var ATTENTION_STAGE_TRANSITIONS = Object.freeze({
-  receive: Object.freeze(["parse", "respond"]),
-  parse: Object.freeze(["receive", "strategy", "respond"]),
-  strategy: Object.freeze(["parse", "plan", "diagnose", "respond"]),
-  plan: Object.freeze(["strategy", "tactics", "diagnose", "respond"]),
-  tactics: Object.freeze(["plan", "execute", "diagnose"]),
-  execute: Object.freeze(["tactics", "verify", "diagnose"]),
-  verify: Object.freeze(["execute", "respond", "diagnose"]),
-  diagnose: Object.freeze(["strategy", "plan", "tactics", "execute", "respond"]),
-  respond: Object.freeze(["receive"])
-});
 
 // src/mcp/amp/submission-review.mts
 import { assertFileFreshness } from "./file-freshness.mjs";

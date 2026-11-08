@@ -15,17 +15,22 @@ import "../chunks/chunk-RFL4UMRM.mjs";
 import "../chunks/chunk-WRPECDXT.mjs";
 import {
   assertModelParameters
-} from "../chunks/chunk-DDMCHAQF.mjs";
+} from "../chunks/chunk-EABV3UTP.mjs";
 import "../chunks/chunk-PSOOAZQ2.mjs";
 import "../chunks/chunk-DJR3CBCZ.mjs";
 import "../chunks/chunk-GF4UECXF.mjs";
 
 // src/mcp/amp/attention-schedule.mts
 import { openNativeStore } from "./native-store.mjs";
+var NAME = "attention_manifest_protocol_attention_schedule";
 var STAGES = ["receive", "parse", "strategy", "plan", "tactics", "execute", "verify", "diagnose", "respond"];
 var MAX_SELECTED = 50;
 var MAX_BYTES = 32768;
-var plain = (value) => JSON.parse(JSON.stringify(value));
+var MAX_CANDIDATES = 1e3;
+var DELIVERY = "read-only routing preview; no mount, retention, persistence or hidden context injection";
+function plain(value) {
+  return JSON.parse(JSON.stringify(value));
+}
 function signalsFrom(workflow, selected) {
   const session = workflow.get("session", selected);
   const mission = workflow.list("mission", selected).find((item) => !["achieved", "abandoned", "failed"].includes(item.state));
@@ -36,7 +41,7 @@ function signalsFrom(workflow, selected) {
   const active = tasks.filter((item) => item.state === "active");
   const actions = workflow.list("action", selected);
   const running = actions.find((item) => ["ready", "running", "active"].includes(item.state) && workflow.get("task", item.taskId).state === "active");
-  const failed = actions.find((item) => item.state === "unknown_outcome" || item.state === "failed" || item.state === "dead_letter");
+  const failed = actions.find((item) => ["unknown_outcome", "failed", "dead_letter"].includes(item.state));
   const pendingVerification = active.length > 0 && actions.length > 0 && !running && !failed;
   return {
     inputReceived: session.state === "active" || session.state === "idle",
@@ -50,43 +55,57 @@ function signalsFrom(workflow, selected) {
     ...failed ? { failure: { unitId: failed.id, category: "action_outcome" } } : {}
   };
 }
-function attentionSchedule(binding, workspace, scope) {
+function attentionScheduleBinding(binding, workspace, scope) {
   return {
-    name: "attention_manifest_protocol_attention_schedule",
-    description: "Read-only L3 routing preview: derive the nine-stage attention stage from durable workflow facts, then let the native scheduler rank scoped attention objects into the current stage focus, deferred and suppressed sets. It never mounts, persists, changes retention or grants authorization; the decision log is advisory.",
-    inputSchema: { type: "object", additionalProperties: false, properties: {
-      stage: { enum: [...STAGES] },
-      maxSelected: { type: "integer", minimum: 1, maximum: MAX_SELECTED },
-      maxBytes: { type: "integer", minimum: 1, maximum: MAX_BYTES }
-    } },
+    name: NAME,
+    description: "Host extension, not canonical AMP. Read-only L3 routing preview: derive the nine-stage attention stage from durable workflow facts (session, mission, goals, plans, tasks, actions and the current Turn), then let the native scheduler rank scoped attention objects into the current stage focus, deferred and suppressed sets. It never mounts, persists, changes retention, fetches sources or grants authorization; the decision log is advisory.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        stage: { enum: [...STAGES] },
+        maxSelected: { type: "integer", minimum: 1, maximum: MAX_SELECTED },
+        maxBytes: { type: "integer", minimum: 1, maximum: MAX_BYTES }
+      }
+    },
     annotations: { readOnlyHint: true },
     async handler(input) {
       assertModelParameters(input);
       const allowed = ["stage", "maxSelected", "maxBytes"];
       if (Object.keys(input).some((key) => !allowed.includes(key))) throw new Error("Unknown attention schedule parameter");
       const requested = input.stage;
-      if (requested !== void 0 && !STAGES.includes(requested)) throw new Error("Unknown attention stage");
-      const maxSelected = Number(input.maxSelected ?? 20);
-      const maxBytes = Number(input.maxBytes ?? MAX_BYTES);
-      if (!Number.isSafeInteger(maxSelected) || maxSelected < 1 || maxSelected > MAX_SELECTED) throw new Error(`maxSelected must be 1-${MAX_SELECTED}`);
-      if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_BYTES) throw new Error(`maxBytes must be 1-${MAX_BYTES}`);
+      if (requested !== void 0 && (typeof requested !== "string" || !STAGES.includes(requested))) throw new Error("Unknown attention stage");
+      const maxSelected = input.maxSelected ?? 20;
+      if (typeof maxSelected !== "number" || !Number.isSafeInteger(maxSelected) || maxSelected < 1 || maxSelected > MAX_SELECTED) throw new Error(`maxSelected must be 1-${MAX_SELECTED}`);
+      const maxBytes = input.maxBytes ?? MAX_BYTES;
+      if (typeof maxBytes !== "number" || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_BYTES) throw new Error(`maxBytes must be 1-${MAX_BYTES}`);
       const opened = openNativeStore(workspace);
       try {
-        const selected = scope(opened.root);
+        const selected = scope(opened.root, opened.store);
         if (!selected) throw new Error("Select a native workflow before routing attention");
         const persistence = new WorkflowPersistence({ store: opened.store, workflow: new WorkflowStore() });
-        if (persistence.restoreAll().skipped.length) throw new Error("Native workflow contains invalid facts");
+        const restored = persistence.restoreAll();
+        if (restored.skipped.length) throw new Error("Native workflow contains invalid facts: " + restored.skipped.join(", "));
         const workflow = persistence.workflow;
         const session = workflow.get("session", selected);
         if (!["active", "idle"].includes(session.state)) throw new Error("Resume the selected workflow before routing attention");
         const turns = workflow.list("turn", selected).slice().sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)));
         if (!turns.length) throw new Error("Routing attention requires a durable turn in the selected workflow");
         const scopeValue = { tenantId: binding.tenantId, principalId: binding.principalId, sessionId: selected, turnId: turns[0].id };
-        const candidates = opened.store.list("attention").filter((object) => object.scope?.tenantId === binding.tenantId && object.scope?.principalId === binding.principalId && object.scope?.sessionId === selected).map(plain);
+        const candidates = opened.store.list("attention").filter((object) => object.scope?.tenantId === binding.tenantId && object.scope?.principalId === binding.principalId && object.scope?.sessionId === selected).map((object) => plain(object));
+        if (candidates.length > MAX_CANDIDATES) throw new Error(`Attention scope exceeds the scheduling candidate limit of ${MAX_CANDIDATES}`);
         const signals = signalsFrom(workflow, selected);
         const scheduler = new AttentionScheduler();
         const now = (/* @__PURE__ */ new Date()).toISOString();
-        const route = scheduler.route({ now, scope: scopeValue, budget: { calls: candidates.length + 1, bytes: maxBytes }, reason: "Read-only L3 preview over durable workflow signals", ...requested ? { stage: requested } : {}, signals, maxSelected }, candidates);
+        const route = scheduler.route({
+          now,
+          scope: scopeValue,
+          budget: { calls: candidates.length + 1, bytes: maxBytes },
+          reason: "Read-only L3 preview over durable workflow signals",
+          ...requested === void 0 ? {} : { stage: requested },
+          signals,
+          maxSelected
+        }, candidates);
         const current = route.previousStage ?? route.stage;
         return plain({
           scope: scopeValue,
@@ -95,15 +114,20 @@ function attentionSchedule(binding, workspace, scope) {
           profile: route.profile,
           signals,
           candidates: candidates.length,
-          selected: route.selected.map((item) => ({ id: item.object?.id ?? item.id, summary: item.object?.summary, pointer: item.object?.pointer, score: item.score, reason: item.reason })),
-          deferred: route.deferred.map((item) => ({ id: item.object?.id ?? item.id, reason: item.reason })),
-          suppressed: route.suppressed.map((item) => ({ id: item.object?.id ?? item.id, reason: item.reason })),
+          selected: route.selected.map((item) => ({ id: item.id, summary: item.summary, pointer: item.pointer, score: item.score, reason: item.reason })),
+          deferred: route.deferred.map((item) => ({ id: item.id, reason: item.reason })),
+          suppressed: route.suppressed.map((item) => ({ id: item.id, reason: item.reason })),
           usage: route.usage,
           decision: route.decision,
           decisionLog: scheduler.decisionLog(),
           transitions: STAGES.filter((next) => isStageTransitionAllowed(current, next)),
-          authorization: route.authorization,
-          limitations: ["Routing is advisory and read-only: no mount, persist, retention or suppression state changes.", "Signals derive from durable workflow facts, not model claims.", "A fresh scheduler has no persisted prior stage, so previousStage is null and transitions start from the detected stage."]
+          authorization: "not_granted",
+          delivery: DELIVERY,
+          limitations: [
+            "Routing is advisory and read-only: no mount, persist, retention or suppression state changes.",
+            "Signals derive from durable workflow facts, not model claims; a fresh scheduler has no persisted prior stage, so previousStage is null and transitions start from the detected stage.",
+            "Selection is ranked by the native scheduler only; it grants no execution or business authority."
+          ]
         });
       } finally {
         opened.store.close();
@@ -112,5 +136,5 @@ function attentionSchedule(binding, workspace, scope) {
   };
 }
 export {
-  attentionSchedule
+  attentionScheduleBinding
 };

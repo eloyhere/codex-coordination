@@ -27,7 +27,7 @@ test('all tool names are discoverable without Elasticsearch and catalog metrics 
   }
   const before = await host.context({ action: 'metrics' })
   const after = await host.context({ action: 'metrics' })
-  assert.equal(before.catalog.hash, after.catalog.hash); assert.equal(before.catalog.tools, 163)
+  assert.equal(before.catalog.hash, after.catalog.hash); assert.equal(before.catalog.tools, 165)
   assert.equal(before.catalog.names, undefined)
   assert.ok(SERVER_INSTRUCTIONS.length <= 512)
 })

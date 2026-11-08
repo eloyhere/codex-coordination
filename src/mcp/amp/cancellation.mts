@@ -8,6 +8,7 @@ import type { Store } from 'attention-manifest-protocol/service'
 import type { ToolDefinition } from '../lib/tools.mjs'
 import { nativeRequest, openNativeStore } from './native-store.mjs'
 import { requestHostApproval } from './host-client.mjs'
+import type { WorkflowScopeCallback } from './workflow.mjs'
 import { randomUUID } from 'node:crypto'
 
 const requested = 'codex.amp.workflow.cancel_requested'
@@ -19,7 +20,7 @@ const text = (value: unknown, max: number): value is string => typeof value === 
 const plain = <T,>(value: T): T => JSON.parse(nativeRequest(value))
 type Command = { operation: 'request_cancel' | 'cascade'; kind: WorkflowKind; id: string; expectedVersion: number; idempotencyKey: string; reason: string }
 
-export function workflowCancelReview(binding: AgentBinding, workspace: () => unknown, scope: (root: string) => string | undefined): ToolDefinition {
+export function workflowCancelReview(binding: AgentBinding, workspace: () => unknown, scope: WorkflowScopeCallback): ToolDefinition {
   const identity = { tenantId: binding.tenantId, principalId: binding.principalId, connection: binding.sessionId }
   const terminal = (store: Store, key: string, request: string) => {
     const prior = store.events({ kind: reviewed }).map(event => event.payload as any).find(value => value.key === key)
@@ -32,7 +33,9 @@ export function workflowCancelReview(binding: AgentBinding, workspace: () => unk
     return store.events({ kind: requested }).map(event => event.payload as any).find(value => !completed.has(value.reviewId) && value.snapshot?.selected === selected && value.snapshot?.target?.kind === args.kind && value.snapshot?.target?.id === args.id)
   }
   const read = (store: Store, root: string, args: Command) => {
-    const selected = scope(root)
+    // Reuse the caller's open Store so a live thread resolves without a second
+    // SQLite connection; a legacy `(root) => string` callback simply ignores it.
+    const selected = scope(root, store)
     if (!selected) throw new Error('Select a native workflow first')
     const persistence = new WorkflowPersistence({ store, workflow: new WorkflowStore() })
     if (persistence.restoreAll().skipped.length) throw new Error('Native workflow contains invalid facts')

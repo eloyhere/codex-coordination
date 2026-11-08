@@ -2,12 +2,12 @@
 import { createRequire as __codexCreateRequire } from "node:module"; import { fileURLToPath as __codexFileURLToPath } from "node:url"; import { dirname as __codexDirname } from "node:path"; const require = __codexCreateRequire(import.meta.url); const __filename = __codexFileURLToPath(import.meta.url); const __dirname = __codexDirname(__filename);
 import {
   Workspace
-} from "../chunks/chunk-LWPI4HV4.mjs";
+} from "../chunks/chunk-3PJCLQGO.mjs";
 import {
   NodeFileStorage,
   fencePathOf,
   lockPathOf
-} from "../chunks/chunk-BB6QXN7O.mjs";
+} from "../chunks/chunk-FWHOSTP7.mjs";
 import {
   createInvocation,
   createObservation,
@@ -25,8 +25,10 @@ import "../chunks/chunk-RFL4UMRM.mjs";
 import "../chunks/chunk-WRPECDXT.mjs";
 import {
   WorkspaceError,
-  assertModelParameters
-} from "../chunks/chunk-GO36SU47.mjs";
+  assertModelParameters,
+  createOutlineProvider,
+  normalizeToLf
+} from "../chunks/chunk-EABV3UTP.mjs";
 import "../chunks/chunk-PSOOAZQ2.mjs";
 import "../chunks/chunk-DJR3CBCZ.mjs";
 import "../chunks/chunk-GF4UECXF.mjs";
@@ -41,6 +43,41 @@ import { NativeReadStorage } from "./filesystem.mjs";
 var digest = (value) => "sha256:" + createHash("sha256").update(value).digest("hex");
 var actor = "mcp-host-file-execution";
 var eventKind = "codex.amp.workspace.write";
+var parameterNames = ["path", "content", "expectedHash", "target", "expectedBufferVersion", "taskId", "idempotencyKey"];
+var outlineProvider = createOutlineProvider();
+function normalizeWriteTarget(value) {
+  if (value === void 0) return void 0;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("target must be an object with a mode");
+  const target = value;
+  if (target.mode === "line" || target.mode === "byte") {
+    if (Object.keys(target).some((key) => !["mode", "start", "end"].includes(key))) throw new Error("Unknown target parameter");
+    for (const key of ["start", "end"]) if (!Number.isSafeInteger(target[key]) || target[key] < 0) throw new Error("target " + key + " must be a nonnegative integer");
+    if (target.end < target.start) throw new Error("target end must be greater than or equal to start");
+    const start = target.start, end = target.end;
+    return Object.freeze(target.mode === "line" ? { mode: "line", start, end } : { mode: "byte", start, end });
+  }
+  if (target.mode === "outline") {
+    if (Object.keys(target).some((key) => !["mode", "id"].includes(key))) throw new Error("Unknown target parameter");
+    if (typeof target.id !== "string" || !target.id.trim() || target.id.length > 1024) throw new Error("target id must be a nonempty string of at most 1024 characters");
+    return Object.freeze({ mode: "outline", id: target.id });
+  }
+  throw new Error("target mode must be one of line, byte, outline");
+}
+function previewStorage(base) {
+  return {
+    read(ref) {
+      return { ...base, ...ref };
+    },
+    acquireLease(ref, owner) {
+      return { ...ref, owner, fence: 1, token: "write-preflight" };
+    },
+    releaseLease() {
+    },
+    compareAndSwap() {
+      throw new WorkspaceError("read_only", "Preflight storage cannot commit");
+    }
+  };
+}
 function restore(store) {
   const persistence = new WorkflowPersistence({ store, workflow: new WorkflowStore() });
   const report = persistence.restoreAll();
@@ -82,8 +119,8 @@ function writeBinding(binding, workspace, filesystemPolicy, scope) {
     if (configured && realpathSync(configured.root) !== root) throw new Error("Filesystem policy belongs to another workspace");
     return configured ?? { root, exclude: [] };
   };
-  const assertContext = (root, selected) => {
-    if (typeof workspace() !== "string" || realpathSync(String(workspace())) !== root || scope?.(root) !== selected) throw new Error("Workspace or workflow scope changed during write");
+  const assertContext = (root, selected, store) => {
+    if (typeof workspace() !== "string" || realpathSync(String(workspace())) !== root || scope?.(root, store) !== selected) throw new Error("Workspace or workflow scope changed during write");
   };
   const admission = (persistence, selected, taskId, allowReady) => {
     const workflow = persistence.workflow;
@@ -99,31 +136,44 @@ function writeBinding(binding, workspace, filesystemPolicy, scope) {
   };
   return {
     name,
-    description: "Host-approved whole-file text CAS in a selected active native workflow Task. Requires path, content, expectedHash, taskId and idempotencyKey. Existing UTF-8 files only; no create/delete/binary/structural targets. Uses a native ActionAttempt and file lease. Unresolved effects require host reconciliation. No task/goal acceptance.",
+    description: "Host-approved UTF-8 text CAS in a selected active native workflow Task. Requires path, content, expectedHash, taskId and idempotencyKey. Without target the whole buffer is replaced; with target only the addressed line range, UTF-8 byte range or outline node is replaced. Optional expectedBufferVersion is enforced by the native edit guard. Existing UTF-8 files only; no create/delete/binary writes. Uses a native ActionAttempt and file lease. Unresolved effects require host reconciliation. No task/goal acceptance.",
     annotations: { readOnlyHint: false },
     inputSchema: { type: "object", additionalProperties: false, required: ["path", "content", "expectedHash", "taskId", "idempotencyKey"], properties: {
       path: { type: "string", minLength: 1, maxLength: 1024 },
       content: { type: "string", maxLength: 1048576 },
       expectedHash: { type: "string", pattern: "^(sha256:)?[a-f0-9]{64}$" },
+      target: {
+        description: "Optional native edit target; omit to replace the whole buffer. line uses 0-based end-exclusive lines, byte uses UTF-8 byte offsets, outline uses a node id from the current buffer outline.",
+        oneOf: [
+          { type: "object", additionalProperties: false, required: ["mode", "start", "end"], properties: { mode: { const: "line" }, start: { type: "integer", minimum: 0 }, end: { type: "integer", minimum: 0 } } },
+          { type: "object", additionalProperties: false, required: ["mode", "start", "end"], properties: { mode: { const: "byte" }, start: { type: "integer", minimum: 0 }, end: { type: "integer", minimum: 0 } } },
+          { type: "object", additionalProperties: false, required: ["mode", "id"], properties: { mode: { const: "outline" }, id: { type: "string", minLength: 1, maxLength: 1024 } } }
+        ]
+      },
+      expectedBufferVersion: { type: "integer", minimum: 0 },
       taskId: { type: "string", minLength: 1 },
       idempotencyKey: { type: "string", minLength: 1, maxLength: 200 }
     } },
     async handler(input) {
       assertModelParameters(input);
       const args = Object.freeze(JSON.parse(nativeRequest(input)));
-      if (Object.keys(args).some((key2) => !["path", "content", "expectedHash", "taskId", "idempotencyKey"].includes(key2))) throw new Error("Unknown write parameter");
+      if (Object.keys(args).some((key2) => !parameterNames.includes(key2))) throw new Error("Unknown write parameter");
       for (const key2 of ["path", "content", "expectedHash", "taskId", "idempotencyKey"]) if (typeof args[key2] !== "string" || key2 !== "content" && !args[key2]) throw new Error(key2 + " must be a string");
       if (!/^(sha256:)?[a-f0-9]{64}$/.test(String(args.expectedHash)) || String(args.idempotencyKey).length > 200 || String(args.path).length > 1024 || Buffer.byteLength(String(args.content)) > 1048576) throw new Error("Write parameter bounds exceeded");
+      const writeTarget = normalizeWriteTarget(args.target);
+      if (args.expectedBufferVersion !== void 0 && (!Number.isSafeInteger(args.expectedBufferVersion) || args.expectedBufferVersion < 0)) throw new Error("expectedBufferVersion must be a nonnegative integer");
+      const bufferVersion = args.expectedBufferVersion;
       const { root, store } = openNativeStore(workspace);
       const key = binding.principalId + ":" + args.idempotencyKey;
       const history = () => store.events({ kind: eventKind }).map((event) => event.payload).filter((value) => value.key === key);
       let selected, request, policy, storage, ref;
-      let target, base;
+      let preflight, base, planned, plannedContentDigest;
+      let editOptions;
       try {
-        const candidate = scope?.(root);
+        const candidate = scope?.(root, store);
         if (!candidate) throw new Error("Select an active native workflow before writing");
         selected = candidate;
-        request = nativeRequest({ path: args.path, content: args.content, expectedHash: String(args.expectedHash).replace(/^sha256:/, ""), taskId: args.taskId, scope: selected });
+        request = nativeRequest({ path: args.path, content: args.content, expectedHash: String(args.expectedHash).replace(/^sha256:/, ""), target: writeTarget, expectedBufferVersion: bufferVersion, taskId: args.taskId, scope: selected });
         policy = JSON.parse(nativeRequest(policyFor(root)));
         storage = new ScopedWriteStorage(policy, binding.tenantId);
         ref = { tenantId: binding.tenantId, rootId: storage.bounded.rootId, path: String(args.path) };
@@ -134,21 +184,40 @@ function writeBinding(binding, workspace, filesystemPolicy, scope) {
           throw new Error("Write outcome is unresolved; host reconciliation is required before retry");
         }
         admission(restore(store), selected, String(args.taskId), true);
-        target = storage.checked(ref.path);
+        preflight = storage.checked(ref.path);
         base = storage.read(ref);
         if (!base || base.charset?.encoding !== "utf-8") throw new WorkspaceError("invalid_target", "Only existing UTF-8 text files are writable");
         if (base.hash.replace(/^sha256:/, "") !== String(args.expectedHash).replace(/^sha256:/, "")) throw new WorkspaceError("version_conflict", "File differs from expectedHash");
+        editOptions = { expectedBaseHash: base.hash, ...bufferVersion === void 0 ? {} : { expectedBufferVersion: bufferVersion } };
+        const preview = new Workspace({ tenantId: binding.tenantId, rootId: ref.rootId, storage: previewStorage(base), outline: outlineProvider });
+        const previewFile = preview.mount(ref.path, { mode: "writable" });
+        try {
+          planned = previewFile.planWrite(String(args.content), writeTarget, editOptions);
+        } finally {
+          previewFile.unmount({ discardDirty: true });
+        }
+        plannedContentDigest = digest(normalizeToLf(planned.text));
         store.transaction(() => {
           if (history().length) throw new Error("Concurrent write claimed this idempotency key");
-          store.appendEvent(eventKind, { key, request, state: "approval_pending", beforeRawHash: target.raw.hash, beforeVersion: target.stat.mtimeMs });
+          store.appendEvent(eventKind, { key, request, state: "approval_pending", beforeRawHash: preflight.raw.hash, beforeVersion: preflight.stat.mtimeMs });
         });
       } finally {
         store.close();
       }
-      const approved = await requestHostApproval("native-workflow:" + selected, name, { path: args.path, expectedHash: args.expectedHash, rawHash: target.raw.hash, content: args.content, taskId: args.taskId, workspace: root });
+      const resolvedTarget = writeTarget === void 0 ? void 0 : { mode: planned.mode, ranges: planned.matches.map((match) => ({ startLine: match.startLine, endLine: match.endLine, startByte: match.startByte, endByte: match.endByte })), ...planned.outline === void 0 ? {} : { outline: planned.outline } };
+      const approved = await requestHostApproval("native-workflow:" + selected, name, Object.freeze({
+        path: String(args.path),
+        expectedHash: String(args.expectedHash),
+        ...bufferVersion === void 0 ? {} : { expectedBufferVersion: bufferVersion },
+        ...writeTarget === void 0 ? {} : { target: writeTarget, resolved: resolvedTarget },
+        rawHash: preflight.raw.hash,
+        content: String(args.content),
+        taskId: String(args.taskId),
+        workspace: root
+      }));
       const db = openNativeStore(() => root), dbStore = db.store;
       try {
-        assertContext(root, selected);
+        assertContext(root, selected, dbStore);
         const claim = dbStore.events({ kind: eventKind }).map((event) => event.payload).filter((value) => value.key === key).at(-1);
         if (claim?.request !== request || claim.state !== "approval_pending") throw new Error("Write claim changed during approval");
         if (!approved) {
@@ -160,9 +229,10 @@ function writeBinding(binding, workspace, filesystemPolicy, scope) {
           const persistence = restore(dbStore), task = admission(persistence, selected, String(args.taskId), true);
           if (nativeRequest(policyFor(root)) !== nativeRequest(policy)) throw new Error("Filesystem policy changed during approval");
           const now = storage.checked(ref.path);
-          if (now.raw.hash !== target.raw.hash || now.stat.ino !== target.stat.ino || now.stat.dev !== target.stat.dev || now.stat.mtimeMs !== target.stat.mtimeMs) throw new WorkspaceError("stale", "File changed during approval");
+          if (now.raw.hash !== preflight.raw.hash || now.stat.ino !== preflight.stat.ino || now.stat.dev !== preflight.stat.dev || now.stat.mtimeMs !== preflight.stat.mtimeMs) throw new WorkspaceError("stale", "File changed during approval");
           const budgetReservationId = "write-budget:" + randomUUID();
-          nativeIoBudget(dbStore, "native-read:" + binding.principalId).reserve(budgetReservationId, "native-read:" + binding.principalId, nativeReadReservation);
+          const reservationBytes = Math.max(nativeReadReservation.bytes, preflight.raw.bytes.byteLength + Buffer.byteLength(String(args.content)) + 65536);
+          nativeIoBudget(dbStore, "native-read:" + binding.principalId).reserve(budgetReservationId, "native-read:" + binding.principalId, { ...nativeReadReservation, bytes: reservationBytes });
           if (task.state === "ready") persistence.transition("task", task.id, "active", { expectedVersion: task.version, actor, cancellationEpoch: task.cancellationEpoch });
           const action = persistence.create("action", { id: "workspace-write:" + randomUUID(), sessionId: selected, taskId: task.id, operationId: randomUUID(), effect: "workspace:file.write", required: false, sideEffect: true, recovery: "reconcile" }, actor);
           const pending = persistence.transition("action", action.id, "pending", { expectedVersion: action.version, actor, cancellationEpoch: action.cancellationEpoch });
@@ -174,12 +244,12 @@ function writeBinding(binding, workspace, filesystemPolicy, scope) {
           for (const event of persistence.workflow.history().slice(before.events.length)) persistence.persistEvent(event);
           persistence.persistAttempt(attempt, { actor, reason: "Host-approved file write" });
           const identity = { actionId: ready.id, attemptId, executionId, operationId: ready.operationId, cancellationEpoch: attempt.cancellationEpoch, budgetReservationId };
-          dbStore.appendEvent(eventKind, { key, request, state: "started", ...identity, beforeRawHash: target.raw.hash });
+          dbStore.appendEvent(eventKind, { key, request, state: "started", ...identity, beforeRawHash: preflight.raw.hash, plannedContentDigest });
           return identity;
         });
         try {
           const value = dbStore.transaction(() => {
-            assertContext(root, selected);
+            assertContext(root, selected, dbStore);
             if (nativeRequest(policyFor(root)) !== nativeRequest(policy)) throw new Error("Filesystem policy changed before commit");
             const persistence = restore(dbStore), task = admission(persistence, selected, String(args.taskId), false);
             const workflow = persistence.workflow;
@@ -187,11 +257,11 @@ function writeBinding(binding, workspace, filesystemPolicy, scope) {
             const attempt = workflow.getAttempt(started.attemptId);
             if (attempt.state !== "running") throw new Error("Write attempt is no longer running");
             const live = storage.checked(ref.path);
-            if (live.raw.hash !== target.raw.hash || live.stat.ino !== target.stat.ino || live.stat.dev !== target.stat.dev || live.stat.mtimeMs !== target.stat.mtimeMs) throw new WorkspaceError("stale", "File changed before commit");
-            const file = new Workspace({ tenantId: binding.tenantId, rootId: ref.rootId, storage }).mount(ref.path, { mode: "writable", owner: started.attemptId });
+            if (live.raw.hash !== preflight.raw.hash || live.stat.ino !== preflight.stat.ino || live.stat.dev !== preflight.stat.dev || live.stat.mtimeMs !== preflight.stat.mtimeMs) throw new WorkspaceError("stale", "File changed before commit");
+            const file = new Workspace({ tenantId: binding.tenantId, rootId: ref.rootId, storage, outline: outlineProvider }).mount(ref.path, { mode: "writable", owner: started.attemptId });
             let snapshot;
             try {
-              file.write(String(args.content), void 0, { expectedBaseHash: base.hash });
+              file.write(String(args.content), writeTarget, editOptions);
               snapshot = file.flush({ idempotencyKey: String(args.idempotencyKey) });
             } finally {
               file.unmount({ discardDirty: true });
@@ -203,12 +273,14 @@ function writeBinding(binding, workspace, filesystemPolicy, scope) {
             for (const event of workflow.history().slice(before.events.length)) persistence.persistEvent(event);
             persistence.persistAttempt(settled, { actor, reason: "File CAS committed" });
             const context = { tenantId: binding.tenantId, principalId: binding.principalId, agentId: "codex-coordination", sessionId: selected, operationId: started.operationId, attemptId: started.attemptId, executionId: started.executionId, policyVersion: binding.policyVersion, cancellationEpoch: started.cancellationEpoch };
-            const invocation = createInvocation({ id: started.executionId, context, toolId: name, arguments: { path: String(args.path), expectedHash: String(args.expectedHash), contentDigest: digest(String(args.content)) }, createdAt: (/* @__PURE__ */ new Date()).toISOString(), idempotencyKey: String(args.idempotencyKey) });
-            const observation = createObservation({ id: randomUUID(), invocationId: invocation.id, status: "success", value: { path: String(args.path), beforeRawHash: target.raw.hash, rawHash: after.raw.hash, hash: snapshot.hash, bytes: snapshot.size }, observedAt: (/* @__PURE__ */ new Date()).toISOString() });
+            const invocationArguments = JSON.parse(nativeRequest({ path: String(args.path), expectedHash: String(args.expectedHash), contentDigest: digest(String(args.content)), target: writeTarget, expectedBufferVersion: bufferVersion }));
+            const invocation = createInvocation({ id: started.executionId, context, toolId: name, arguments: invocationArguments, createdAt: (/* @__PURE__ */ new Date()).toISOString(), idempotencyKey: String(args.idempotencyKey) });
+            const observationValue = JSON.parse(nativeRequest({ path: String(args.path), target: writeTarget, expectedBufferVersion: bufferVersion, beforeRawHash: preflight.raw.hash, rawHash: after.raw.hash, hash: snapshot.hash, bytes: snapshot.size }));
+            const observation = createObservation({ id: randomUUID(), invocationId: invocation.id, status: "success", value: observationValue, observedAt: (/* @__PURE__ */ new Date()).toISOString() });
             const receipt = createReceiptCore({ id: "receipt:" + started.executionId, kind: "file_flush_receipt", invocation, observation, issuedAt: (/* @__PURE__ */ new Date()).toISOString(), hashAlgorithm: "sha256-json-execution-facts/2", payloadDigest: executionFactDigest(invocation, observation), lifecycle: "issued", workspaceAnchor: { workspaceId: digest(root), changeHash: nativeEnvironment(dbStore, root), affectedFiles: [String(args.path)], snapshotId: after.raw.hash } });
             dbStore.save("receipt", receipt);
             nativeIoBudget(dbStore, "native-read:" + binding.principalId).settle(started.budgetReservationId, { calls: 1, bytes: Buffer.byteLength(String(args.content)) + after.raw.bytes.byteLength });
-            const result = { approved: true, changed: target.raw.hash !== after.raw.hash, ...started, file: { path: args.path, hash: snapshot.hash, rawHash: after.raw.hash, bytes: snapshot.size }, receipt, businessVerification: "not_performed" };
+            const result = { approved: true, changed: preflight.raw.hash !== after.raw.hash, ...started, plannedContentDigest, file: { path: args.path, hash: snapshot.hash, rawHash: after.raw.hash, bytes: snapshot.size }, receipt, businessVerification: "not_performed" };
             dbStore.appendEvent(eventKind, { key, request, state: "succeeded", result });
             return result;
           });
@@ -225,7 +297,7 @@ function writeBinding(binding, workspace, filesystemPolicy, scope) {
                 for (const event of persistence.workflow.history().slice(before.events.length)) persistence.persistEvent(event);
                 persistence.persistAttempt(uncertain, { actor, from: "running", reason: "Write outcome uncertain" });
               }
-              dbStore.appendEvent(eventKind, { key, request, state: "unknown_outcome", ...started, error: String(error) });
+              dbStore.appendEvent(eventKind, { key, request, state: "unknown_outcome", ...started, plannedContentDigest, error: String(error) });
             });
           } catch {
           }

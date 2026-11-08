@@ -5,6 +5,7 @@ import { WorkflowPersistence } from 'attention-manifest-protocol/persistence'
 import { WorkflowStore } from 'attention-manifest-protocol/workflow'
 import type { ToolDefinition } from '../lib/tools.mjs'
 import { openNativeStore, nativeRequest } from './native-store.mjs'
+import type { WorkflowScopeCallback } from './workflow.mjs'
 import Ajv from 'ajv'
 
 const submissionSchema = { type: 'object', additionalProperties: false, required: ['id', 'bounds', 'tasks'], properties: {
@@ -13,7 +14,7 @@ const submissionSchema = { type: 'object', additionalProperties: false, required
 } }
 const validateSubmission = new (Ajv as any)({ allErrors: true }).compile(submissionSchema)
 
-export function draftBinding(binding: AgentBinding, workspace: () => unknown, scope: (root: string) => string | undefined): ToolDefinition {
+export function draftBinding(binding: AgentBinding, workspace: () => unknown, scope: WorkflowScopeCallback): ToolDefinition {
   const name = 'attention_manifest_protocol_plan.propose_draft'
   const standard = createAgentSurface()
   const descriptor = standard.tools.find(tool => tool.name === name)!
@@ -22,8 +23,11 @@ export function draftBinding(binding: AgentBinding, workspace: () => unknown, sc
       const { root, store } = openNativeStore(workspace)
       try {
         return store.transaction(() => {
-          const selected = scope(root)
-          if (!selected || selected !== context.binding.sessionId) throw new Error('Select a native workflow first')
+          // The callback is live-aware: an explicitly selected imported snapshot
+          // still wins, otherwise the observed Codex thread's native session is
+          // used. The resolved scope replaces the old connection-id equality gate.
+          const selected = scope(root, store)
+          if (!selected) throw new Error('Select a native workflow first')
           const request = nativeRequest({ parameters, scope: selected })
           const key = binding.principalId + ':' + context.idempotencyKey
           const prior = store.events({ kind: 'codex.amp.plan.draft' }).find(event => (event.payload as any).key === key)
@@ -45,10 +49,16 @@ export function draftBinding(binding: AgentBinding, workspace: () => unknown, sc
           const persistence = new WorkflowPersistence({ store, workflow: new WorkflowStore() })
           const report = persistence.restoreAll()
           if (report.skipped.length) throw new Error('Native workflow contains invalid facts')
+          // Imported snapshots keep their legacy reference mapping; a live scope
+          // uses the native Goal id verbatim, so the two origins never accept
+          // each other's ids (a foreign Goal fails the session check below).
           const imported = store.events({ kind: 'codex.amp.legacy_import' }).find(event => (event.payload as any).sessionId === selected)?.payload as any
-          const targetId = archived ? imported?.references['goal:' + payload.targetId] ?? payload.targetId : payload.targetId
+          const targetId = archived ? imported?.references?.['goal:' + payload.targetId] ?? payload.targetId : payload.targetId
           const goal = persistence.workflow.get('goal', String(targetId))
           if (goal.sessionId !== selected) throw new Error('Goal is outside the selected workflow scope')
+          const session = persistence.workflow.get('session', selected)
+          if (!['active', 'idle'].includes(session.state)) throw new Error('Selected workflow session must be active/idle before proposing a plan')
+          if (goal.state !== 'active') throw new Error('Plan proposal target Goal must be active')
           const plan = persistence.create('plan', { id: submission.id, sessionId: selected, goalId: goal.id, bounds: submission.bounds }, binding.principalId)
           const pending = new Map<string, any>(submission.tasks.map((task: any) => [task.id, task]))
           if (pending.size !== submission.tasks.length) throw new Error('Duplicate task id in draft')
@@ -62,15 +72,25 @@ export function draftBinding(binding: AgentBinding, workspace: () => unknown, sc
             }
             if (!advanced) throw new Error('Draft task dependencies are cyclic or reference missing tasks')
           }
-          const result = { plan, tasks, approval: 'not_granted', executionAuthorized: false }
+          const result = { plan, tasks, approval: 'not_granted', executionAuthorized: false, origin: imported ? 'native-plugin-workflow' : 'codex-live', scope: selected }
           store.appendEvent('codex.amp.plan.draft', { key, request, scope: selected, submissionId: archived?.id ?? null, result })
           return result
         })
       } finally { store.close() }
     },
   }, onCall(record) { if (typeof workspace() !== 'string') return; const { store } = openNativeStore(workspace); try { store.appendEvent('codex.amp.plan.draft_call', { ...record, principalId: binding.principalId }) } finally { store.close() } } })
-  return { name, description: 'Create a native draft plan and pending task DAG for the selected active workflow goal. Supply a typed proposal or consume an old pending plan submission by submissionId. Creation is transactional and idempotent; it does not approve the plan or authorize execution.',
+  return { name, description: 'Create a native draft plan and pending task DAG for the active Goal of the selected workflow, which is either an imported snapshot or the observed live Codex thread selected with attention_manifest_protocol_session.get. For a live workflow the proposal targetId is the native Goal id; imported snapshots keep their legacy reference mapping. Supply a typed proposal or consume an old pending plan submission by submissionId. Creation is transactional and idempotent; it does not approve the plan or authorize execution.',
     inputSchema: { type: 'object', additionalProperties: false, required: ['idempotencyKey'], oneOf: [{ required: ['targetId', 'submission'] }, { required: ['submissionId'] }], properties: { idempotencyKey: { type: 'string', minLength: 1, maxLength: 200 }, targetId: { type: 'string', minLength: 1 }, submission: submissionSchema, submissionId: { type: 'string', minLength: 1 } } }, annotations: { readOnlyHint: false },
-    async handler(args) { const { idempotencyKey, ...parameters } = args; const { root, store } = openNativeStore(workspace); store.close(); return await gateway.call(name, parameters, { binding: { ...binding, sessionId: scope(root) ?? binding.sessionId }, idempotencyKey: idempotencyKey as string }) as Record<string, any> },
+    async handler(args) {
+      const { idempotencyKey, ...parameters } = args
+      // Resolve the exact scope with an open Store and hand it to the gateway as
+      // the host-bound session. The handler resolves again inside its own Store,
+      // so a failed lookup is still journaled and reported through the gateway.
+      const resolved = (() => {
+        const { root, store } = openNativeStore(workspace)
+        try { return scope(root, store) } catch { return undefined } finally { store.close() }
+      })()
+      return await gateway.call(name, parameters, { binding: { ...binding, sessionId: resolved ?? binding.sessionId }, idempotencyKey: idempotencyKey as string }) as Record<string, any>
+    },
   }
 }

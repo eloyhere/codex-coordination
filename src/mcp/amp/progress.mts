@@ -5,17 +5,20 @@ import { WorkflowPersistence } from 'attention-manifest-protocol/persistence'
 import type { AgentBinding } from 'attention-manifest-protocol/agent'
 import type { ToolDefinition } from '../lib/tools.mjs'
 import { openNativeStore, nativeRequest, sameNativeRequest } from './native-store.mjs'
+import type { WorkflowScopeCallback } from './workflow.mjs'
 import { randomUUID } from 'node:crypto'
 import { currentAttempt } from './attempt-scope.mjs'
 
-export function progressBinding(binding: AgentBinding, workspace: () => unknown, scope: (root: string) => string | undefined): ToolDefinition {
+export function progressBinding(binding: AgentBinding, workspace: () => unknown, scope: WorkflowScopeCallback): ToolDefinition {
   const standard = createAgentSurface()
   const descriptor = standard.tools.find(tool => tool.module === 'task' && tool.verb === 'report_progress')!
   const gateway = new AgentGateway({ surface: { ...standard, tools: [descriptor] }, authorize: values => values.every(value => descriptor.authority.includes(value)), handlers: {
     [descriptor.name]: (parameters, context) => {
       const { root, store } = openNativeStore(workspace)
       try { return store.transaction(() => {
-        const selected = scope(root)
+        // Reuse the already-open Store so the same imported/live precedence as
+        // the canonical reads applies without a second SQLite connection.
+        const selected = scope(root, store)
         if (!selected) throw new Error('Select a native workflow first')
         if (typeof parameters.id !== 'string' || typeof parameters.summary !== 'string' || !parameters.summary.trim() || parameters.summary.length > 4000 || !Number.isSafeInteger(parameters.expectedVersion) || Number(parameters.expectedVersion) < 0) throw new Error('Task id, expectedVersion and a nonempty bounded summary are required')
         const persistence = new WorkflowPersistence({ store, workflow: new WorkflowStore() })

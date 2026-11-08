@@ -11,7 +11,7 @@ import "../chunks/chunk-WRPECDXT.mjs";
 import {
   AgentGateway,
   createAgentSurface
-} from "../chunks/chunk-GO36SU47.mjs";
+} from "../chunks/chunk-EABV3UTP.mjs";
 import "../chunks/chunk-PSOOAZQ2.mjs";
 import "../chunks/chunk-DJR3CBCZ.mjs";
 import "../chunks/chunk-GF4UECXF.mjs";
@@ -22,21 +22,50 @@ import { workflowReview } from "./workflow-review.mjs";
 import { draftBinding } from "./draft.mjs";
 import { progressBinding } from "./progress.mjs";
 import { scopedAttempt } from "./attempt-scope.mjs";
-function workflowBindings(binding, workspace, selected = /* @__PURE__ */ new Map()) {
+var SELECT_SCOPE_ERROR = "Select an imported native workflow with attention_manifest_protocol_workflow_scope or an observed Codex thread with attention_manifest_protocol_session.get first";
+var LIVE_ORIGIN = "codex-live";
+var IMPORTED_ORIGIN = "native-plugin-workflow";
+function resolveWorkflowScope(store, root, selected, threadForRoot) {
+  const imported = selected.get(root);
+  if (imported) return { scope: imported, origin: IMPORTED_ORIGIN };
+  const threadId = threadForRoot?.(root);
+  if (!threadId) throw new Error(SELECT_SCOPE_ERROR);
+  const mapping = store.events({ kind: "codex.sync.session_mapping" }).map((item) => item.payload).find((item) => item.threadId === threadId);
+  if (!mapping || typeof mapping.sessionId !== "string" || !mapping.sessionId) throw new Error(`Selected Codex thread ${threadId} has no native session mapping in this project`);
+  if (!store.list("session").some((item) => item?.id === mapping.sessionId)) throw new Error(`Native session ${mapping.sessionId} is missing for Codex thread ${threadId}`);
+  return { scope: mapping.sessionId, origin: LIVE_ORIGIN, threadId };
+}
+function scopeForRoot(store, root, selected, threadForRoot) {
+  return resolveWorkflowScope(store, root, selected, threadForRoot).scope;
+}
+function scopeCallback(selected, threadForRoot) {
+  return (root, store) => {
+    if (store) return scopeForRoot(store, root, selected, threadForRoot);
+    const opened = openNativeStore(() => root);
+    try {
+      return scopeForRoot(opened.store, opened.root, selected, threadForRoot);
+    } finally {
+      opened.store.close();
+    }
+  };
+}
+function workflowBindings(binding, workspace, selected = /* @__PURE__ */ new Map(), threadForRoot) {
   const standard = createAgentSurface();
+  const resolveScope = scopeCallback(selected, threadForRoot);
   const modules = /* @__PURE__ */ new Set(["goal", "plan", "mission", "intent", "task", "action"]);
   const descriptors = standard.tools.filter((tool) => modules.has(tool.module) && ["get", "list", "list_ready", "ready_tasks"].includes(tool.verb));
   const handlers = {};
-  for (const descriptor of descriptors) handlers[descriptor.name] = (parameters, context) => {
+  for (const descriptor of descriptors) handlers[descriptor.name] = (parameters, _context) => {
     const { root, store } = openNativeStore(workspace);
     try {
-      if (selected.get(root) !== context.binding.sessionId) throw new Error("Select an imported native workflow with attention_manifest_protocol_workflow_scope first");
+      const resolution = resolveWorkflowScope(store, root, selected, threadForRoot);
+      const scope = resolution.scope;
+      const provenance = resolution.origin === LIVE_ORIGIN ? { origin: LIVE_ORIGIN, threadId: resolution.threadId, sessionId: scope } : { origin: IMPORTED_ORIGIN };
       const persistence = new WorkflowPersistence({ store, workflow: new WorkflowStore() });
       const report = persistence.restoreAll();
       if (report.skipped.length) throw new Error("Native workflow has invalid facts: " + report.skipped.join(", "));
       const workflow = persistence.workflow;
       const kind = descriptor.module;
-      const scope = context.binding.sessionId;
       const get = (id) => {
         if (typeof id !== "string" || !id.length) throw new Error("id is required");
         const entity = workflow.get(kind, id);
@@ -47,15 +76,15 @@ function workflowBindings(binding, workspace, selected = /* @__PURE__ */ new Map
         if (descriptor.verb === "get") {
           if (typeof parameters.id !== "string" || !parameters.id.length) throw new Error("attempt id is required");
           const { attempt } = scopedAttempt(workflow, parameters.id, scope);
-          return { attempt, scope, origin: "native-plugin-workflow" };
+          return { attempt, scope, ...provenance };
         }
         if (typeof parameters.taskId !== "string" || !parameters.taskId.length) throw new Error("taskId is required");
         const task = workflow.get("task", parameters.taskId);
         if (task.sessionId !== scope) throw new Error("Task is outside the selected workflow scope");
         const attempts = workflow.list("action", scope).filter((action) => action.taskId === task.id).flatMap((action) => action.attemptIds.map((id) => workflow.getAttempt(id)));
-        return { attempts, taskId: task.id, scope, total: attempts.length, origin: "native-plugin-workflow" };
+        return { attempts, taskId: task.id, scope, total: attempts.length, ...provenance };
       }
-      if (descriptor.verb === "get") return { entity: get(parameters.id), scope, origin: "native-plugin-workflow", ...kind === "task" ? { progress: store.events({ kind: "codex.amp.task.progress" }).map((event) => event.payload).filter((report2) => report2.taskId === parameters.id && report2.sessionId === scope).slice(-20) } : {} };
+      if (descriptor.verb === "get") return { entity: get(parameters.id), scope, ...provenance, ...kind === "task" ? { progress: store.events({ kind: "codex.amp.task.progress" }).map((event) => event.payload).filter((report2) => report2.taskId === parameters.id && report2.sessionId === scope).slice(-20) } : {} };
       if (descriptor.verb === "ready_tasks" || descriptor.verb === "list_ready") {
         const session = workflow.get("session", scope);
         const planId = descriptor.verb === "ready_tasks" ? get(parameters.id).id : void 0;
@@ -63,12 +92,12 @@ function workflowBindings(binding, workspace, selected = /* @__PURE__ */ new Map
           const plan = workflow.get("plan", task.planId);
           return ["approved", "ready", "executing", "running"].includes(plan.state) && task.dependsOn.every((id) => ["completed", "succeeded", "skipped"].includes(workflow.get("task", id).state));
         });
-        return { tasks: ["active", "idle"].includes(session.state) ? tasks : [], sessionState: session.state, scope, executionAuthorized: false };
+        return { tasks: ["active", "idle"].includes(session.state) ? tasks : [], sessionState: session.state, scope, ...provenance, executionAuthorized: false };
       }
       const limit = Number(parameters.limit ?? 20);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("limit must be between 1 and 100");
       const entities = workflow.list(kind, scope);
-      return { entities: entities.slice(0, limit), total: entities.length, scope, origin: "native-plugin-workflow" };
+      return { entities: entities.slice(0, limit), total: entities.length, scope, ...provenance };
     } finally {
       store.close();
     }
@@ -82,7 +111,17 @@ function workflowBindings(binding, workspace, selected = /* @__PURE__ */ new Map
       if (typeof workspace() !== "string") return;
       const { root, store } = openNativeStore(workspace);
       try {
-        store.appendEvent("codex.amp.workflow.call", { ...record, principalId: binding.principalId, workflowScope: selected.get(root) ?? null });
+        const imported = selected.get(root);
+        const threadId = imported ? void 0 : threadForRoot?.(root);
+        const mapping = threadId === void 0 ? void 0 : store.events({ kind: "codex.sync.session_mapping" }).map((item) => item.payload).find((item) => item.threadId === threadId);
+        const workflowScope = imported ?? (typeof mapping?.sessionId === "string" ? mapping.sessionId : null);
+        store.appendEvent("codex.amp.workflow.call", {
+          ...record,
+          principalId: binding.principalId,
+          workflowOrigin: imported ? IMPORTED_ORIGIN : threadId === void 0 ? null : LIVE_ORIGIN,
+          workflowScope,
+          ...threadId === void 0 ? {} : { threadId }
+        });
       } finally {
         store.close();
       }
@@ -90,19 +129,26 @@ function workflowBindings(binding, workspace, selected = /* @__PURE__ */ new Map
   });
   const tools = descriptors.map((descriptor) => ({
     name: descriptor.name,
-    description: descriptor.description + " Reads native entities in the workflow scope selected on this MCP connection. This is plugin workflow state, not Codex chat lifecycle. Legacy reads remain available through coordination tools.",
+    description: descriptor.description + ' Reads native entities for the observed Codex thread selected with attention_manifest_protocol_session.get, or for the imported workflow snapshot selected with attention_manifest_protocol_workflow_scope (imported wins when both are selected). Results report origin "codex-live" with threadId and the native sessionId, or origin "native-plugin-workflow". Live reads never fall back to imported facts. Plan proposals, task progress and workflow review follow the same selection: an imported snapshot wins when explicitly selected, otherwise the observed live Codex thread is used. attention_manifest_protocol_workflow_scope still selects imported snapshots only. This is plugin workflow state, not Codex chat lifecycle. Legacy reads remain available through coordination tools.',
     inputSchema: { type: "object", additionalProperties: false, required: ["get", "ready_tasks"].includes(descriptor.verb) ? ["id"] : descriptor.module === "action" && descriptor.verb === "list" ? ["taskId"] : [], properties: ["get", "ready_tasks"].includes(descriptor.verb) ? { id: { type: "string", minLength: 1 } } : descriptor.module === "action" && descriptor.verb === "list" ? { taskId: { type: "string", minLength: 1 } } : { limit: { type: "integer", minimum: 1, maximum: 100 } } },
     annotations: { readOnlyHint: true },
     async handler(args) {
-      const { root, store } = openNativeStore(workspace);
-      store.close();
-      const sessionId = selected.get(root) ?? binding.sessionId;
-      return await gateway.call(descriptor.name, args, { binding: { ...binding, sessionId } });
+      const resolution = (() => {
+        const { root, store } = openNativeStore(workspace);
+        try {
+          return resolveWorkflowScope(store, root, selected, threadForRoot);
+        } catch {
+          return void 0;
+        } finally {
+          store.close();
+        }
+      })();
+      return await gateway.call(descriptor.name, args, { binding: { ...binding, sessionId: resolution?.scope ?? binding.sessionId } });
     }
   }));
   tools.push({
     name: "attention_manifest_protocol_workflow_scope",
-    description: "List or select imported native workflow snapshots for this MCP connection and workspace. Selection grants no execution and is not a Codex session switch. Restart requires selection again.",
+    description: "List or select imported native workflow snapshots for this MCP connection and workspace. Imported selection takes precedence over a live observed thread for canonical workflow reads. Selection grants no execution and is not a Codex session switch. Restart requires selection again.",
     inputSchema: { type: "object", additionalProperties: false, required: ["action"], properties: { action: { enum: ["list", "select", "current"] }, sourceDigest: { type: "string", pattern: "^[a-f0-9]{64}$" } } },
     async handler(args) {
       const { root, store } = openNativeStore(workspace);
@@ -120,11 +166,14 @@ function workflowBindings(binding, workspace, selected = /* @__PURE__ */ new Map
       }
     }
   });
-  tools.push(workflowReview(binding, workspace, (root) => selected.get(root)));
-  tools.push(draftBinding(binding, workspace, (root) => selected.get(root)));
-  tools.push(progressBinding(binding, workspace, (root) => selected.get(root)));
+  tools.push(workflowReview(binding, workspace, resolveScope));
+  tools.push(draftBinding(binding, workspace, resolveScope));
+  tools.push(progressBinding(binding, workspace, resolveScope));
   return tools;
 }
 export {
+  resolveWorkflowScope,
+  scopeCallback,
+  scopeForRoot,
   workflowBindings
 };

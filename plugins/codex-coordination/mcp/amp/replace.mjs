@@ -2,10 +2,19 @@
 import { createRequire as __codexCreateRequire } from "node:module"; import { fileURLToPath as __codexFileURLToPath } from "node:url"; import { dirname as __codexDirname } from "node:path"; const require = __codexCreateRequire(import.meta.url); const __filename = __codexFileURLToPath(import.meta.url); const __dirname = __codexDirname(__filename);
 import {
   Workspace
-} from "../chunks/chunk-LWPI4HV4.mjs";
+} from "../chunks/chunk-3PJCLQGO.mjs";
 import {
-  NodeFileStorage
-} from "../chunks/chunk-BB6QXN7O.mjs";
+  NodeFileStorage,
+  fencePathOf,
+  lockPathOf
+} from "../chunks/chunk-FWHOSTP7.mjs";
+import {
+  createInvocation,
+  createObservation,
+  createReceiptCore,
+  executionFactDigest
+} from "../chunks/chunk-WQKNW6L2.mjs";
+import "../chunks/chunk-HZFMX4CQ.mjs";
 import "../chunks/chunk-WOQ4WTC7.mjs";
 import {
   WorkflowPersistence,
@@ -15,25 +24,29 @@ import "../chunks/chunk-IDGTYCME.mjs";
 import "../chunks/chunk-RFL4UMRM.mjs";
 import "../chunks/chunk-WRPECDXT.mjs";
 import {
-  REPLACE_TOOL,
   WorkspaceError,
   assertModelParameters,
-  createReplaceToolHandler
-} from "../chunks/chunk-GO36SU47.mjs";
+  createOutlineProvider,
+  normalizeToLf
+} from "../chunks/chunk-EABV3UTP.mjs";
 import "../chunks/chunk-PSOOAZQ2.mjs";
 import "../chunks/chunk-DJR3CBCZ.mjs";
 import "../chunks/chunk-GF4UECXF.mjs";
 
 // src/mcp/amp/replace.mts
-import { lstatSync, realpathSync } from "node:fs";
-import { randomUUID } from "node:crypto";
-import { openNativeStore, nativeRequest } from "./native-store.mjs";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { openNativeStore, nativeRequest, nativeEnvironment } from "./native-store.mjs";
 import { requestHostApproval } from "./host-client.mjs";
 import { NativeReadStorage } from "./filesystem.mjs";
 import { nativeIoBudget, nativeReadReservation } from "./read-budget.mjs";
 var eventKind = "codex.amp.workspace.replace";
+var actor = "mcp-host-file-execution";
 var MODES = ["string", "regex", "line", "byte", "outline"];
 var PARAMETERS = ["path", "mode", "replacement", "text", "pattern", "flags", "occurrence", "all", "start", "end", "id", "expectedBufferVersion", "expectedBaseHash", "taskId", "idempotencyKey"];
+var digest = (value) => "sha256:" + createHash("sha256").update(value).digest("hex");
+var hashKey = (value) => value.replace(/^sha256:/, "");
+var outlineProvider = createOutlineProvider();
 var ScopedReplaceStorage = class extends NodeFileStorage {
   bounded;
   constructor(policy, tenantId) {
@@ -44,26 +57,47 @@ var ScopedReplaceStorage = class extends NodeFileStorage {
     const absolute = this.bounded.path(path);
     const stat = lstatSync(absolute);
     if (stat.nlink !== 1) throw new WorkspaceError("invalid_scope", "Hard-linked files are not editable");
+    for (const sidecar of [lockPathOf(absolute), fencePathOf(absolute)]) if (existsSync(sidecar) && (!lstatSync(sidecar).isFile() || lstatSync(sidecar).isSymbolicLink())) throw new WorkspaceError("invalid_scope", "Unsafe file lock metadata");
     return { absolute, stat, raw: this.bounded.raw(path) };
   }
   read(ref) {
     this.checked(ref.path);
     return super.read(ref);
   }
-  acquireLease(ref, owner, ttl) {
+  acquireLease(ref, owner, ttlMilliseconds) {
     this.checked(ref.path);
-    return super.acquireLease(ref, owner, ttl);
+    return super.acquireLease(ref, owner, ttlMilliseconds);
   }
   compareAndSwap(ref, expectedHash, content, fence) {
     this.checked(ref.path);
     return super.compareAndSwap(ref, expectedHash, content, fence);
   }
 };
-function admission(persistence, selected, taskId) {
+function previewStorage(base) {
+  return {
+    read(ref) {
+      return { ...base, ...ref };
+    },
+    acquireLease(ref, owner) {
+      return { ...ref, owner, fence: 1, token: "replace-preflight" };
+    },
+    releaseLease() {
+    },
+    compareAndSwap() {
+      throw new WorkspaceError("read_only", "Preflight storage cannot commit");
+    }
+  };
+}
+function restore(store) {
+  const persistence = new WorkflowPersistence({ store, workflow: new WorkflowStore() });
+  if (persistence.restoreAll().skipped.length) throw new Error("Native workflow facts are invalid");
+  return persistence;
+}
+function admission(persistence, selected, taskId, allowReady) {
   const workflow = persistence.workflow;
   if (!["active", "idle"].includes(workflow.get("session", selected).state)) throw new Error("Selected workflow is not active");
   const task = workflow.get("task", taskId);
-  if (task.sessionId !== selected || !["ready", "active", "running"].includes(task.state)) throw new Error("Task must belong to the selected workflow and be ready/active");
+  if (task.sessionId !== selected || !(allowReady ? ["ready", "active", "running"] : ["active", "running"]).includes(task.state)) throw new Error("Task must belong to selected workflow and be ready/active");
   const plan = workflow.get("plan", task.planId);
   if (!["executing", "running"].includes(plan.state) || Date.parse(plan.bounds.deadline) <= Date.now()) throw new Error("Task plan is not executing or its bounds expired");
   const goal = workflow.get("goal", plan.goalId);
@@ -72,14 +106,26 @@ function admission(persistence, selected, taskId) {
   return task;
 }
 function structure(input) {
-  if (!MODES.includes(String(input.mode))) throw new Error(`mode must be one of ${MODES.join(", ")}`);
+  const mode = String(input.mode);
+  if (!MODES.includes(mode)) throw new Error(`mode must be one of ${MODES.join(", ")}`);
   if (typeof input.replacement !== "string") throw new Error("replacement must be a string");
-  if (String(input.mode) === "string" && (typeof input.text !== "string" || !input.text)) throw new Error("text is required for string mode");
-  if (String(input.mode) === "regex" && (typeof input.pattern !== "string" || !input.pattern)) throw new Error("pattern is required for regex mode");
-  if (String(input.mode) === "outline" && (typeof input.id !== "string" || !input.id)) throw new Error("id is required for outline mode");
-  if (["line", "byte"].includes(String(input.mode))) {
+  if (mode === "string" && (typeof input.text !== "string" || !input.text)) throw new Error("text is required for string mode");
+  if (mode === "regex" && (typeof input.pattern !== "string" || !input.pattern)) throw new Error("pattern is required for regex mode");
+  if (mode === "outline" && (typeof input.id !== "string" || !input.id.trim())) throw new Error("id is required for outline mode");
+  if (["line", "byte"].includes(mode)) {
     if (!Number.isSafeInteger(input.start) || input.start < 0 || !Number.isSafeInteger(input.end) || input.end < input.start) throw new Error("start/end must be nonnegative integers with end >= start");
   }
+  if (input.flags !== void 0 && (typeof input.flags !== "string" || !input.flags.trim())) throw new Error("flags must be a nonempty string");
+  if (input.occurrence !== void 0 && (!Number.isSafeInteger(input.occurrence) || input.occurrence < 1)) throw new Error("occurrence must be a positive safe integer");
+  if (input.all !== void 0 && typeof input.all !== "boolean") throw new Error("all must be a boolean");
+  if (input.expectedBufferVersion !== void 0 && (!Number.isSafeInteger(input.expectedBufferVersion) || input.expectedBufferVersion < 0)) throw new Error("expectedBufferVersion must be a nonnegative safe integer");
+}
+function replaceTarget(input) {
+  const mode = String(input.mode);
+  if (mode === "string") return Object.freeze({ mode, text: String(input.text), ...input.occurrence === void 0 ? {} : { occurrence: input.occurrence }, ...input.all === void 0 ? {} : { all: input.all } });
+  if (mode === "regex") return Object.freeze({ mode, pattern: String(input.pattern), ...input.flags === void 0 ? {} : { flags: input.flags }, ...input.occurrence === void 0 ? {} : { occurrence: input.occurrence }, ...input.all === void 0 ? {} : { all: input.all } });
+  if (mode === "outline") return Object.freeze({ mode, id: String(input.id) });
+  return Object.freeze({ mode, start: input.start, end: input.end });
 }
 function replaceBinding(binding, workspace, filesystemPolicy, scope) {
   const name = "attention_manifest_protocol_replace";
@@ -88,9 +134,12 @@ function replaceBinding(binding, workspace, filesystemPolicy, scope) {
     if (configured && realpathSync(configured.root) !== root) throw new Error("Filesystem policy belongs to another workspace");
     return configured ?? { root, exclude: [] };
   };
+  const assertContext = (root, selected, store) => {
+    if (typeof workspace() !== "string" || realpathSync(String(workspace())) !== root || scope?.(root, store) !== selected) throw new Error("Workspace or workflow scope changed during replace");
+  };
   return {
     name,
-    description: "Host-approved canonical AMP replace inside one selected native workflow task: literal string, regular expression, line range, UTF-8 byte range or outline node, with optional expectedBufferVersion/expectedBaseHash compare-and-swap guards. Uses native lease/CAS flush and a durable idempotency journal. Not a general Action scheduler; no task/goal acceptance.",
+    description: "Host-approved canonical AMP replace inside one selected native workflow task: literal string, regular expression, line range, UTF-8 byte range or outline node, with optional expectedBufferVersion/expectedBaseHash compare-and-swap guards. Uses a native ActionAttempt, native lease/CAS flush and a durable idempotency journal. Unresolved effects require host reconciliation. No task/goal acceptance.",
     inputSchema: { type: "object", additionalProperties: false, required: ["path", "mode", "replacement", "taskId", "idempotencyKey"], properties: {
       path: { type: "string", minLength: 1, maxLength: 1024 },
       mode: { enum: MODES },
@@ -121,69 +170,140 @@ function replaceBinding(binding, workspace, filesystemPolicy, scope) {
       const { root, store } = openNativeStore(workspace);
       const key = binding.principalId + ":" + args.idempotencyKey;
       const history = () => store.events({ kind: eventKind }).map((event) => event.payload).filter((value) => value.key === key);
-      let selected, request, policy, storage, target;
+      let selected, request, policy, storage, ref;
+      let preflight, base, planned, plannedContentDigest, editOptions;
       try {
-        const candidate = scope?.(root);
+        const candidate = scope?.(root, store);
         if (!candidate) throw new Error("Select an active native workflow before replacing");
         selected = candidate;
         request = nativeRequest({ ...parameters, taskId: args.taskId, scope: selected });
         policy = JSON.parse(nativeRequest(policyFor(root)));
         storage = new ScopedReplaceStorage(policy, binding.tenantId);
+        ref = { tenantId: binding.tenantId, rootId: storage.bounded.rootId, path: String(args.path) };
         const prior = history().at(-1);
         if (prior) {
           if (prior.request !== request) throw new Error("Idempotency key already used for a different replace");
           if (prior.result) return { ...prior.result, replayed: true };
           throw new Error("Replace outcome is unresolved; host reconciliation is required before retry");
         }
-        const persistence = new WorkflowPersistence({ store, workflow: new WorkflowStore() });
-        const restored = persistence.restoreAll();
-        if (restored.skipped.length) throw new Error("Native workflow facts are invalid: " + restored.skipped.join(", "));
-        admission(persistence, selected, String(args.taskId));
-        target = storage.checked(String(args.path));
+        admission(restore(store), selected, String(args.taskId), true);
+        preflight = storage.checked(ref.path);
+        base = storage.read(ref);
+        if (!base) throw new WorkspaceError("not_found", "File is not readable");
+        if (args.expectedBaseHash !== void 0 && hashKey(String(args.expectedBaseHash)) !== hashKey(base.hash)) throw new WorkspaceError("version_conflict", "File differs from expectedBaseHash");
+        editOptions = Object.freeze({ expectedBaseHash: base.hash, ...args.expectedBufferVersion === void 0 ? {} : { expectedBufferVersion: Number(args.expectedBufferVersion) } });
+        const target = replaceTarget(args);
+        const preview = new Workspace({ tenantId: binding.tenantId, rootId: ref.rootId, storage: previewStorage(base), outline: outlineProvider });
+        const previewFile = preview.mount(ref.path, { mode: "writable" });
+        try {
+          planned = previewFile.planReplace(target, String(args.replacement), editOptions);
+        } finally {
+          previewFile.unmount({ discardDirty: true });
+        }
+        plannedContentDigest = digest(normalizeToLf(planned.text));
         store.transaction(() => {
           if (history().length) throw new Error("Concurrent replace claimed this idempotency key");
-          store.appendEvent(eventKind, { key, request, state: "approval_pending", beforeRawHash: target.raw.hash, beforeVersion: target.stat.mtimeMs });
+          store.appendEvent(eventKind, { key, request, state: "approval_pending", beforeRawHash: preflight.raw.hash, beforeVersion: preflight.stat.mtimeMs });
         });
       } finally {
         store.close();
       }
-      const approved = await requestHostApproval("native-workflow:" + selected, name, { ...parameters, taskId: args.taskId, rawHash: target.raw.hash, workspace: root, note: "Exact native replace; the raw hash pins the pre-edit bytes" });
+      const approved = await requestHostApproval("native-workflow:" + selected, name, { ...parameters, taskId: args.taskId, rawHash: preflight.raw.hash, workspace: root, note: "Exact native replace; the raw hash pins the pre-edit bytes" });
       const db = openNativeStore(() => root), dbStore = db.store;
       try {
+        assertContext(root, selected, dbStore);
         const claim = dbStore.events({ kind: eventKind }).map((event) => event.payload).filter((value) => value.key === key).at(-1);
         if (claim?.request !== request || claim.state !== "approval_pending") throw new Error("Replace claim changed during approval");
         if (!approved) {
-          const result2 = { approved: false, changed: false };
-          dbStore.appendEvent(eventKind, { key, request, result: result2 });
-          return result2;
+          const result = { approved: false, changed: false };
+          dbStore.appendEvent(eventKind, { key, request, result });
+          return result;
         }
-        const reservationId = "replace-budget:" + randomUUID();
-        dbStore.transaction(() => {
-          const persistence = new WorkflowPersistence({ store: dbStore, workflow: new WorkflowStore() });
-          if (persistence.restoreAll().skipped.length) throw new Error("Native workflow facts changed during approval");
-          admission(persistence, selected, String(args.taskId));
-          const now = storage.checked(String(args.path));
-          if (now.raw.hash !== target.raw.hash || now.stat.ino !== target.stat.ino || now.stat.dev !== target.stat.dev || now.stat.mtimeMs !== target.stat.mtimeMs) throw new WorkspaceError("stale", "File changed during approval");
-          nativeIoBudget(dbStore, "native-read:" + binding.principalId).reserve(reservationId, "native-read:" + binding.principalId, nativeReadReservation);
-          dbStore.appendEvent(eventKind, { key, request, state: "started", reservationId, beforeRawHash: target.raw.hash });
+        const started = dbStore.transaction(() => {
+          const persistence = restore(dbStore), task = admission(persistence, selected, String(args.taskId), true);
+          if (nativeRequest(policyFor(root)) !== nativeRequest(policy)) throw new Error("Filesystem policy changed during approval");
+          const now = storage.checked(ref.path);
+          if (now.raw.hash !== preflight.raw.hash || now.stat.ino !== preflight.stat.ino || now.stat.dev !== preflight.stat.dev || now.stat.mtimeMs !== preflight.stat.mtimeMs) throw new WorkspaceError("stale", "File changed during approval");
+          const guarded = storage.read(ref);
+          if (!guarded || hashKey(guarded.hash) !== hashKey(base.hash)) throw new WorkspaceError("stale", "File base changed during approval");
+          const budgetReservationId = "replace-budget:" + randomUUID();
+          const reservationBytes = Math.max(nativeReadReservation.bytes, preflight.raw.bytes.byteLength + Buffer.byteLength(String(args.replacement)) + 65536);
+          nativeIoBudget(dbStore, "native-read:" + binding.principalId).reserve(budgetReservationId, "native-read:" + binding.principalId, { ...nativeReadReservation, bytes: reservationBytes });
+          if (task.state === "ready") persistence.transition("task", task.id, "active", { expectedVersion: task.version, actor, cancellationEpoch: task.cancellationEpoch });
+          const action = persistence.create("action", { id: "workspace-replace:" + randomUUID(), sessionId: selected, taskId: task.id, operationId: randomUUID(), effect: "workspace:file.write", required: false, sideEffect: true, recovery: "reconcile" }, actor);
+          const pending = persistence.transition("action", action.id, "pending", { expectedVersion: action.version, actor, cancellationEpoch: action.cancellationEpoch });
+          const ready = persistence.transition("action", pending.id, "ready", { expectedVersion: pending.version, actor, cancellationEpoch: pending.cancellationEpoch });
+          const attemptId = randomUUID(), executionId = randomUUID();
+          const before = persistence.workflow.snapshot(), attempt = persistence.workflow.startAttempt(ready.id, { expectedVersion: ready.version, cancellationEpoch: ready.cancellationEpoch, executionId, attemptId, actor });
+          const liveAction = persistence.workflow.get("action", ready.id);
+          dbStore.save("action", liveAction, { expectedVersion: ready.version });
+          for (const event of persistence.workflow.history().slice(before.events.length)) persistence.persistEvent(event);
+          persistence.persistAttempt(attempt, { actor, reason: "Host-approved file replace" });
+          const identity = { actionId: ready.id, attemptId, executionId, operationId: ready.operationId, cancellationEpoch: attempt.cancellationEpoch, budgetReservationId };
+          dbStore.appendEvent(eventKind, { key, request, state: "started", ...identity, beforeRawHash: preflight.raw.hash, plannedContentDigest });
+          return identity;
         });
-        let result, failure;
         try {
-          const native = new Workspace({ tenantId: binding.tenantId, rootId: storage.bounded.rootId, storage, outline: void 0 });
-          result = createReplaceToolHandler(native)(parameters, { binding: { ...binding, sessionId: selected }, tool: REPLACE_TOOL, idempotencyKey: args.idempotencyKey });
-        } catch (error) {
-          failure = error;
-        }
-        try {
-          dbStore.transaction(() => {
-            const evidence = failure ? null : { ...result, approved: true, changed: true, path: String(args.path), taskId: String(args.taskId), mode: String(args.mode), workspace: root };
-            nativeIoBudget(dbStore, "native-read:" + binding.principalId).settle(reservationId, { calls: 1, bytes: nativeReadReservation.bytes });
-            dbStore.appendEvent(eventKind, failure ? { key, request, state: "unknown_outcome", reservationId, error: String(failure) } : { key, request, state: "succeeded", reservationId, result: evidence });
+          const value = dbStore.transaction(() => {
+            assertContext(root, selected, dbStore);
+            if (nativeRequest(policyFor(root)) !== nativeRequest(policy)) throw new Error("Filesystem policy changed before commit");
+            const persistence = restore(dbStore);
+            admission(persistence, selected, String(args.taskId), false);
+            const workflow = persistence.workflow;
+            workflow.assertExecutionAllowed(started.actionId, started.cancellationEpoch);
+            const attempt = workflow.getAttempt(started.attemptId);
+            if (attempt.state !== "running") throw new Error("Replace attempt is no longer running");
+            const live = storage.checked(ref.path);
+            if (live.raw.hash !== preflight.raw.hash || live.stat.ino !== preflight.stat.ino || live.stat.dev !== preflight.stat.dev || live.stat.mtimeMs !== preflight.stat.mtimeMs) throw new WorkspaceError("stale", "File changed before commit");
+            const native = new Workspace({ tenantId: binding.tenantId, rootId: ref.rootId, storage, outline: outlineProvider });
+            const mount = native.mount(ref.path, { mode: "writable", ...String(args.mode) === "outline" ? { outline: outlineProvider } : {} });
+            let replaced;
+            try {
+              mount.replace(replaceTarget(args), String(args.replacement), editOptions);
+              const snapshot = mount.flush();
+              replaced = Object.freeze({ path: snapshot.path, mode: String(args.mode), state: snapshot.state, version: snapshot.version, bufferVersion: snapshot.bufferVersion, dirty: snapshot.dirty, stale: snapshot.stale, hash: snapshot.hash, baseHash: snapshot.baseHash });
+            } finally {
+              try {
+                mount.unmount();
+              } catch {
+              }
+            }
+            const after = storage.checked(ref.path), action = workflow.get("action", started.actionId), before = workflow.snapshot();
+            const settled = workflow.settleAttempt(started.attemptId, { expectedVersion: attempt.version, expectedActionVersion: action.version, outcome: "succeeded", actor });
+            const updatedAction = workflow.get("action", started.actionId);
+            dbStore.save("action", updatedAction, { expectedVersion: action.version });
+            for (const event of workflow.history().slice(before.events.length)) persistence.persistEvent(event);
+            persistence.persistAttempt(settled, { actor, reason: "File replace committed" });
+            const context = { tenantId: binding.tenantId, principalId: binding.principalId, agentId: "codex-coordination", sessionId: selected, operationId: started.operationId, attemptId: started.attemptId, executionId: started.executionId, policyVersion: binding.policyVersion, cancellationEpoch: started.cancellationEpoch };
+            const invocation = createInvocation({ id: started.executionId, context, toolId: name, arguments: JSON.parse(nativeRequest(parameters)), createdAt: (/* @__PURE__ */ new Date()).toISOString(), idempotencyKey: String(args.idempotencyKey) });
+            const observationValue = JSON.parse(nativeRequest({ path: String(args.path), mode: String(args.mode), beforeRawHash: preflight.raw.hash, rawHash: after.raw.hash, hash: replaced.hash, baseHash: base.hash, version: replaced.version, bufferVersion: replaced.bufferVersion, bytes: after.raw.bytes.byteLength }));
+            const observation = createObservation({ id: randomUUID(), invocationId: invocation.id, status: "success", value: observationValue, observedAt: (/* @__PURE__ */ new Date()).toISOString() });
+            const receipt = createReceiptCore({ id: "receipt:" + started.executionId, kind: "file_flush_receipt", invocation, observation, issuedAt: (/* @__PURE__ */ new Date()).toISOString(), hashAlgorithm: "sha256-json-execution-facts/2", payloadDigest: executionFactDigest(invocation, observation), lifecycle: "issued", workspaceAnchor: { workspaceId: digest(root), changeHash: nativeEnvironment(dbStore, root), affectedFiles: [String(args.path)], snapshotId: after.raw.hash } });
+            dbStore.save("receipt", receipt);
+            nativeIoBudget(dbStore, "native-read:" + binding.principalId).settle(started.budgetReservationId, { calls: 1, bytes: Buffer.byteLength(String(args.replacement)) + after.raw.bytes.byteLength });
+            const result = { approved: true, changed: preflight.raw.hash !== after.raw.hash, ...started, plannedContentDigest, ...replaced, receipt, businessVerification: "not_performed", taskId: String(args.taskId), workspace: root, file: { path: String(args.path), hash: replaced.hash, rawHash: after.raw.hash, bytes: after.raw.bytes.byteLength } };
+            dbStore.appendEvent(eventKind, { key, request, state: "succeeded", result });
+            return result;
           });
-        } catch {
+          return value;
+        } catch (error) {
+          try {
+            dbStore.transaction(() => {
+              const persistence = restore(dbStore), attempt = persistence.workflow.getAttempt(started.attemptId), action = persistence.workflow.get("action", started.actionId);
+              if (attempt.state === "running") {
+                const before = persistence.workflow.snapshot();
+                const uncertain = persistence.workflow.settleAttempt(attempt.attemptId, { expectedVersion: attempt.version, expectedActionVersion: action.version, outcome: "unknown_outcome", actor });
+                const updatedAction = persistence.workflow.get("action", action.id);
+                dbStore.save("action", updatedAction, { expectedVersion: action.version });
+                for (const event of persistence.workflow.history().slice(before.events.length)) persistence.persistEvent(event);
+                persistence.persistAttempt(uncertain, { actor, from: "running", reason: "Replace outcome uncertain" });
+              }
+              dbStore.appendEvent(eventKind, { key, request, state: "unknown_outcome", ...started, plannedContentDigest, error: String(error) });
+            });
+          } catch {
+          }
+          throw new Error("Replace outcome is unresolved; host reconciliation is required before retry: " + String(error));
         }
-        if (failure) throw new Error("Replace outcome is unresolved; host reconciliation is required before retry: " + String(failure));
-        return { ...result, approved: true, changed: true, taskId: String(args.taskId), workspace: root };
       } finally {
         dbStore.close();
       }

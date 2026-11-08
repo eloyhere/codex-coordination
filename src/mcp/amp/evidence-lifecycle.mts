@@ -13,6 +13,7 @@ import { nativeRequest, openNativeStore } from './native-store.mjs'
 import { requestHostApproval } from './host-client.mjs'
 import { assertFileFreshness } from './file-freshness.mjs'
 import type { NativeFilesystemScope } from './filesystem.mjs'
+import type { WorkflowScopeCallback } from './workflow.mjs'
 
 const REQUEST = 'codex.amp.evidence_lifecycle.requested'
 const DECISION = 'codex.amp.evidence_lifecycle.host_decision'
@@ -105,7 +106,7 @@ function readSnapshot(store: Store, binding: AgentBinding, selected: string, evi
   return snapshot
 }
 
-export function evidenceLifecycleReview(binding: AgentBinding, workspace: () => unknown, scope: (root: string) => string | undefined, filesystemPolicy?: () => NativeFilesystemScope | undefined): ToolDefinition {
+export function evidenceLifecycleReview(binding: AgentBinding, workspace: () => unknown, scope: WorkflowScopeCallback, filesystemPolicy?: () => NativeFilesystemScope | undefined): ToolDefinition {
   const identity = { tenantId: binding.tenantId, principalId: binding.principalId, connection: binding.sessionId }
   const fields = ['action', 'evidenceId', 'expectedProofHead', 'expectedEvidenceDigest', 'reason', 'idempotencyKey']
   const replay = (store: Store, key: string, request: string) => {
@@ -134,7 +135,9 @@ export function evidenceLifecycleReview(binding: AgentBinding, workspace: () => 
       const request = nativeRequest(args), key = args.action === 'preview' ? '' : nativeRequest({ ...identity, idempotencyKey: args.idempotencyKey })
       try {
         if (args.action !== 'preview') { const previous = replay(opened.store, key, request); if (previous) return previous }
-        const selected = scope(root)
+        // Reuse the already-open Store: imported selection still wins, otherwise
+        // the selected live Codex thread's native Session is used.
+        const selected = scope(root, opened.store)
         if (!selected) throw new Error('Select a native workflow first')
         if (args.action === 'preview') {
           const preview = readSnapshot(opened.store, binding, selected, args.evidenceId, 'revoke', root, filesystemPolicy)
@@ -170,7 +173,7 @@ export function evidenceLifecycleReview(binding: AgentBinding, workspace: () => 
           let valid = false
           try {
             const active = openNativeStore(workspace)
-            try { valid = active.root === root && scope(root) === snapshot!.selected } finally { active.store.close() }
+            try { valid = active.root === root && scope(root, active.store) === snapshot!.selected } finally { active.store.close() }
             valid = valid && approved && digest(readSnapshot(current.store, binding, snapshot!.selected, args.evidenceId, args.action, root, filesystemPolicy)) === head!
           } catch { valid = false }
           const result: Record<string, any> = { approved, changed: false, reviewId: reviewId!, status: approved ? 'stale_after_approval' : 'rejected' }
